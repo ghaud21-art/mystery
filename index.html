@@ -97,12 +97,6 @@ async function gs(action,data=null,id=null,prompt=null){
 async function gemini(prompt){
   return await gs("callGemini",null,null,prompt);
 }
-    {method:"POST",headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}
-  );
-  const j=await r.json();
-  return j.candidates?.[0]?.content?.parts?.[0]?.text||"";
-}
 
 // ── 공통 UI 컴포넌트 ──────────────────────────────
 const inp={width:"100%",padding:"10px 14px",background:C.paper,
