@@ -31,7 +31,7 @@ input,textarea,select{outline:none}
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── 설정 ──────────────────────────────────────────
-const API_URL="https://script.google.com/macros/s/AKfycbzrO03A8TtfA5zuCuT3djBnihpA_JQaLuDzBHNXDVUkBkZNcNclVMh9UmJNgU3-ofgz/exec";
+const API_URL="https://script.google.com/macros/s/AKfycby7UuxQLgyX_oOgA9D3JTELwA-KDy6whLOuePaY4eQn9QF4HlKq0mLZr_uGzpY915D2/exec";
 
 // ── 색상 팔레트 ───────────────────────────────────
 const C={
@@ -83,26 +83,17 @@ const SUBQ=[
 ];
 
 // ── API 함수 ──────────────────────────────────────
-async function gs(action,data=null,id=null){
-  const url=new URL(API_URL);
-  url.searchParams.set("action",action);
-  if(data) url.searchParams.set("data",JSON.stringify(data));
-  if(id!==null) url.searchParams.set("id",String(id));
-  const r=await fetch(url.toString());
-  const j=await r.json();
-  if(!j.ok) throw new Error(j.error);
-  return j.data;
-}
 async function gs(action,data=null,id=null,prompt=null){
   const url=new URL(API_URL);
   url.searchParams.set("action",action);
   if(data) url.searchParams.set("data",JSON.stringify(data));
   if(id!==null) url.searchParams.set("id",String(id));
   if(prompt) url.searchParams.set("prompt",prompt);
-  ...
+  const r=await fetch(url.toString());
+  const j=await r.json();
+  if(!j.ok) throw new Error(j.error);
+  return j.data;
 }
-
-// 교체
 async function gemini(prompt){
   return await gs("callGemini",null,null,prompt);
 }
