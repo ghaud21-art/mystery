@@ -27,7 +27,7 @@ input,textarea,select{outline:none}
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel">
+<script type="text/babel" data-presets="react" data-plugins="transform-optional-chaining">
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── 설정 ──────────────────────────────────────────
@@ -1209,7 +1209,7 @@ function Schedule({me,mbs,schedules,setSchedules,themes,setModal}){
     setSchedules(p=>p.filter(x=>x.id!==id));
   };
   const copy=s=>{
-    const txt=`📅 ${s.title}\n🕐 ${s.date} ${s.time||""}\n📍 ${s.loc||"장소 미정"}`;
+    const txt=`📅 ${s.title} | 🕐 ${s.date} ${s.time||""} | 📍 ${s.loc||"장소 미정"}`;
     navigator.clipboard.writeText(txt).then(()=>alert("복사됐어요! 카카오톡에 붙여넣기 하세요 😊"));
   };
 
