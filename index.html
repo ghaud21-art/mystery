@@ -30,8 +30,8 @@ input,textarea,select{outline:none}
 <script type="text/babel">
 const{useState,useEffect,useRef,useCallback}=React;
 
-// ── 설정 ──────────────────────────────────────────
-const API_URL="https://script.google.com/macros/s/AKfycbzjF1i4fPhSoKuKdGdXrYHOhXn_nhUhPSNS9UrQCzYsvVrxvMMBPQaJ93Nkd3tDahYk/exec";
+// ── 설정 (여기에 새 앱스크립트 URL을 넣으세요!) ──────────────────────────────────────────
+const API_URL="https://script.google.com/macros/s/AKfycbwOnqmK9g1yHBcdvbctcf3fXZ3x7LJCZDL7Bff2zbP0j4jy3R_wIGFiLs7zIAIQUEJt/exec";
 
 // ── 색상 팔레트 ───────────────────────────────────
 const C={
@@ -78,7 +78,7 @@ const SUBQ=[
   "같이 하면 최고일 것 같은 스타일 / 최악일 것 같은 스타일은?",
 ];
 
-// ── API 함수 (POST 방식으로 개조하여 URL 길이 에러 방지) ──────────────────────────
+// ── 에러가 고쳐진 API 함수 (POST 방식으로 안전하게 전송) ──────────────────────────
 async function gs(action, data=null, id=null, prompt=null){
   const url = new URL(API_URL);
   url.searchParams.set("action", action);
@@ -86,7 +86,6 @@ async function gs(action, data=null, id=null, prompt=null){
 
   let options = { method: "GET" };
 
-  // 데이터나 프롬프트가 있으면 POST 폼데이터 방식으로 안전하게 전송
   if(data || prompt) {
     options.method = "POST";
     options.headers = { "Content-Type": "application/x-www-form-urlencoded" };
@@ -116,7 +115,7 @@ function Btn({onClick,children,full,sm,outline,red,disabled}){
 }
 
 function Card({children,style={},onClick}){
-  return <div onClick={onClick} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20,boxShadow:C.sh,...style}}>{children}</div>;
+  return <div onClick={onClick} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20,boxShadow:C.sh,...style, cursor:onClick?"pointer":"default"}}>{children}</div>;
 }
 
 function Modal({title,onClose,children,wide}){
@@ -353,7 +352,7 @@ function App(){
   const [themes,setThemes]=useState([]);
   const [records,setRecords]=useState([]);
   const [schedules,setSchedules]=useState([]);
-  const [groups,setGroups]=useState([]); // (+) 그룹 상태 전역화 추가
+  const [groups,setGroups]=useState([]); 
   const [modal,setModal]=useState(null);
 
   const goPage=p=>{setPage(p);try{localStorage.setItem("mm_page",p);}catch{}};
@@ -362,7 +361,7 @@ function App(){
 
   useEffect(()=>{gs("getMembers").then(d=>{if(d?.length)setMbs(d);}).catch(()=>{});},[]);
 
-  // (+) 그룹 데이터도 함께 불러오도록 추가
+  // 데이터 로드
   useEffect(()=>{
     if(!me) return;
     gs("getThemes").then(d=>{if(d) setThemes(d.map(safeTheme));}).catch(()=>{});
@@ -408,7 +407,7 @@ function App(){
   );
 }
 
-// ── 모달 라우터 (+ CrewResult 추가) ───────────────────────────────────
+// ── 모달 라우터 ───────────────────────────────────
 function ModalRouter(props){
   const{modal,close}=props;
   if(modal?.t==="addRecord")  return <Modal title="기록 추가" onClose={close}><RecordForm {...props}/></Modal>;
@@ -637,14 +636,14 @@ function Friends({me,mbs,setMbs,records}){
   );
 }
 
-// ── 모임 관리 (+ 전역 groups 상태 연동 완료) ─────────────────────────────────────
+// ── 모임 관리 ─────────────────────────────────────
 function Crew({me,mbs,groups,setModal}){
   const myFriendIds=(()=>{
     let fl=me.friends;
     if(typeof fl==="string"){try{fl=JSON.parse(fl);}catch{fl=[];}}
     return Array.isArray(fl)?fl.map(String):[];
   })();
-  const myCrews=groups.filter(g=>String(g.owner)===String(me.id)); // 내가 만든 모임
+  const myCrews=groups.filter(g=>String(g.owner)===String(me.id));
 
   const openReport=(crewMembers)=>{
     setModal({t:"crewResult",members:crewMembers});
@@ -741,7 +740,7 @@ function ThemeDetail({d,me,records,setRecords,mbs}){
       {d.desc&&<p style={{fontSize:13,color:C.sub,lineHeight:1.7,marginBottom:16}}>{d.desc}</p>}
       <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginBottom:14}}>
         <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>리뷰 작성</div>
-        <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><span style={{fontSize:12,color:C.sub}}>평점:</span>{[1,2,3,4,5].map(n)=>(<span key={n} style={{fontSize:20,cursor:"pointer",color:n<=rating?"#D97706":"#E5D9C8"}} onClick={()=>setRating(n)}>★</span>))}</div>
+        <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}><span style={{fontSize:12,color:C.sub}}>평점:</span>{[1,2,3,4,5].map(n=>(<span key={n} style={{fontSize:20,cursor:"pointer",color:n<=rating?"#D97706":"#E5D9C8"}} onClick={()=>setRating(n)}>★</span>))}</div>
         <textarea value={rev} onChange={e=>setRev(e.target.value)} style={{...inp,height:70,resize:"vertical",marginBottom:8}} placeholder="플레이 후기를 작성해주세요"/>
         <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={spoiler} onChange={e=>setSpoiler(e.target.checked)}/>스포일러 포함</label></div>
         <Btn onClick={submit} disabled={submitting||!rev.trim()}>리뷰 등록</Btn>
@@ -947,7 +946,7 @@ function SchForm({me,themes,setSchedules,close}){
   );
 }
 
-// ── 모임 폼 (+ groups 상태 연동 및 DB 저장 로직 추가) ──────────────────────────────────
+// ── 모임 폼 (+ groups 전역상태 연결) ──────────────────────────────────
 function CrewForm({me,mbs,setGroups,setModal,close}){
   const [sel,setSel]=useState([String(me.id)]);
   const [saving,setSaving]=useState(false);
@@ -989,7 +988,7 @@ function CrewForm({me,mbs,setGroups,setModal,close}){
   );
 }
 
-// ── (+) 누락되었던 크루 결과 모달 컴포넌트 추가 ──────────────────────────────────
+// ── (+) 누락되었던 크루 결과 모달 컴포넌트 ──────────────────────────────────
 function CrewResult({mbs, members, close}){
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
