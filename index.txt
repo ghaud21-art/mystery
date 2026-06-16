@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>머더 미스터리 기록</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#F7F3ED;font-family:"Noto Sans KR",sans-serif;color:#1C1612}
+input,textarea,select,button{font-family:inherit;box-sizing:border-box}
+input,textarea,select{outline:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#E5D9C8;border-radius:2px}
+.fade{animation:fu .25s ease}
+@keyframes fu{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.hov{transition:all .18s;cursor:pointer}
+.hov:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(92,60,24,.13)}
+.btn{cursor:pointer;border:none;transition:all .15s;font-family:inherit}
+.btn:hover{filter:brightness(.92)}
+.spoiler{filter:blur(5px);cursor:pointer;transition:filter .3s;user-select:none}
+.spoiler:hover,.spoiler:focus{filter:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useRef,useCallback}=React;
+
+// ── 설정 ──────────────────────────────────────────
+const API_URL="https://script.google.com/macros/s/AKfycby7UuxQLgyX_oOgA9D3JTELwA-KDy6whLOuePaY4eQn9QF4HlKq0mLZr_uGzpY915D2/exec";
+
+// ── 색상 팔레트 ───────────────────────────────────
+const C={
+  bg:"#F7F3ED",paper:"#FFFDF9",card:"#FFFFFF",
+  border:"#E5D9C8",text:"#1C1612",sub:"#6B5E52",muted:"#A8978A",
+  gold:"#B45309",goldL:"#FEF3C7",goldB:"#FDE68A",
+  red:"#B91C1C",redL:"#FEE2E2",green:"#15803D",greenL:"#DCFCE7",
+  sh:"0 2px 12px rgba(92,60,24,.08)",shL:"0 6px 24px rgba(92,60,24,.13)"
+};
+
+// ── 9유형 정의 ────────────────────────────────────
+const TYPES={
+  "냉철한 지휘관":{icon:"🧊",color:"#1D4ED8",bg:"#DBEAFE",axis:[0,0],str:"증거 기반 판세 장악",weak:"팀원 감정 배려 부족"},
+  "노련한 해결사":{icon:"⚖️",color:"#059669",bg:"#D1FAE5",axis:[1,0],str:"논리·직감 균형",weak:"결정이 느릴 수 있음"},
+  "대담한 도발가":{icon:"⚡",color:"#D97706",bg:"#FEF3C7",axis:[2,0],str:"직감 돌파력",weak:"오판 시 팀 혼란"},
+  "치밀한 분석가":{icon:"🔍",color:"#7C3AED",bg:"#EDE9FE",axis:[0,1],str:"단서 정리·체계화",weak:"결론 도출 느림"},
+  "균형의 조율가":{icon:"🤝",color:"#0891B2",bg:"#CFFAFE",axis:[1,1],str:"중재·합의 도출",weak:"개성이 묻힐 수 있음"},
+  "공감형 몰입가":{icon:"🎭",color:"#BE185D",bg:"#FCE7F3",axis:[2,1],str:"캐릭터 몰입·연기",weak:"객관 판단 어려움"},
+  "침묵의 추적자":{icon:"🕵️",color:"#374151",bg:"#F3F4F6",axis:[0,2],str:"결정적 증거 포착",weak:"소통 부족"},
+  "신중한 관망가":{icon:"🔭",color:"#92400E",bg:"#FEF3C7",axis:[1,2],str:"한 방 타이밍",weak:"기회 놓칠 수 있음"},
+  "예리한 심리술사":{icon:"🔮",color:"#5B21B6",bg:"#EDE9FE",axis:[2,2],str:"심리 독해",weak:"직관 과신 위험"},
+};
+
+// 축 점수로 유형 결정
+function calcType(answers){
+  // Q1-3: 추리 스타일 (A=0논리, B=1균형, C=2직감)
+  // Q4-6: 게임 태도 (A=0주도, B=1협력, C=2잠행)
+  const styleMap={A:0,B:1,C:2};
+  const h=[0,0,0],v=[0,0,0];
+  [0,1,2].forEach(i=>{ if(answers[i]) h[styleMap[answers[i]]]++; });
+  [3,4,5].forEach(i=>{ if(answers[i]) v[styleMap[answers[i]]]++; });
+  const hIdx=h.indexOf(Math.max(...h));
+  const vIdx=v.indexOf(Math.max(...v));
+  return Object.entries(TYPES).find(([,t])=>t.axis[0]===hIdx&&t.axis[1]===vIdx)?.[0]||"균형의 조율가";
+}
+
+// ── 질문 데이터 ───────────────────────────────────
+const QUESTIONS=[
+  {q:"단서를 발견하면?",opts:["다른 증거와 논리적으로 연결한다","일단 적어두고 전체 그림을 그린다","느낌상 수상한 사람부터 의심한다"]},
+  {q:"밀실에서 시체 발견! 첫 행동은?",opts:["현장을 샅샅이 뒤져 물리적 증거 확보","증거도 보고 사람들 반응도 살핀다","표정·말투에서 모순을 찾는다"]},
+  {q:"범인을 지목할 때 더 믿는 건?",opts:["빈틈없는 증거 체인","증거 + 직감 둘 다","확신이 드는 직감"]},
+  {q:"게임 중 내 포지션은?",opts:["수사를 이끄는 리더","의견을 모으는 조율자","조용히 관찰하는 잠복자"]},
+  {q:"내가 범인이 됐을 때 전략은?",opts:["정면돌파 — 주도권 잡기","자연스럽게 섞여 의심 분산","최대한 눈에 안 띄게 잠수"]},
+  {q:"토론이 격해질 때 나는?",opts:["앞장서서 논쟁을 정리한다","양쪽을 중재해 합의를 만든다","한발 물러나 흐름을 지켜본다"]},
+];
+const SUBQ=[
+  "머더미스터리에서 나만의 필살기나 플레이 스타일을 한 줄로 표현한다면?",
+  "같이 하면 최고일 것 같은 스타일 / 최악일 것 같은 스타일은?",
+];
+
+// ── API 함수 ──────────────────────────────────────
+async function gs(action,data=null,id=null,prompt=null){
+  const url=new URL(API_URL);
+  url.searchParams.set("action",action);
+  if(data) url.searchParams.set("data",JSON.stringify(data));
+  if(id!==null) url.searchParams.set("id",String(id));
+  if(prompt) url.searchParams.set("prompt",prompt);
+  const r=await fetch(url.toString());
+  const j=await r.json();
+  if(!j.ok) throw new Error(j.error);
+  return j.data;
+}
+async function gemini(prompt){
+  return await gs("callGemini",null,null,prompt);
+}
+
+// ── 공통 UI 컴포넌트 ──────────────────────────────
+const inp={width:"100%",padding:"10px 14px",background:C.paper,
+  border:`1.5px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14};
+
+function Btn({onClick,children,full,sm,outline,red,disabled}){
+  const base={padding:sm?"5px 12px":full?"12px":"8px 20px",borderRadius:8,
+    fontSize:sm?12:14,fontWeight:700,width:full?"100%":"auto",
+    cursor:disabled?"not-allowed":"pointer",border:"none",
+    transition:"all .15s",opacity:disabled?.5:1};
+  const style=outline
+    ?{...base,background:"transparent",color:red?C.red:C.gold,border:`1.5px solid ${red?C.red:C.gold}`}
+    :red?{...base,background:C.red,color:"#fff"}
+    :{...base,background:disabled?"#E5D9C8":C.gold,color:disabled?C.muted:"#fff"};
+  return <button className="btn" style={style} onClick={onClick} disabled={disabled}>{children}</button>;
+}
+
+function Card({children,style={}}){
+  return <div style={{background:C.card,border:`1px solid ${C.border}`,
+    borderRadius:14,padding:20,boxShadow:C.sh,...style}}>{children}</div>;
+}
+
+function Modal({title,onClose,children,wide}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(28,22,18,.55)",
+      display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20}}
+      onClick={onClose}>
+      <div style={{background:C.card,borderRadius:18,width:"100%",
+        maxWidth:wide?640:480,maxHeight:"90vh",overflowY:"auto",
+        boxShadow:"0 12px 48px rgba(92,60,24,.22)"}}
+        onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+          padding:"18px 24px",borderBottom:`1px solid ${C.border}`}}>
+          <span style={{fontSize:17,fontWeight:700,color:C.gold}}>{title}</span>
+          <button className="btn" onClick={onClose}
+            style={{background:"none",color:C.muted,fontSize:22,padding:"0 4px"}}>✕</button>
+        </div>
+        <div style={{padding:"20px 24px"}}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function TypeCard({typeName,showDetail=false}){
+  const t=TYPES[typeName];
+  if(!t) return null;
+  return(
+    <div style={{background:t.bg,border:`2px solid ${t.color}20`,borderRadius:12,
+      padding:"14px 16px",textAlign:"center"}}>
+      <div style={{fontSize:32,marginBottom:4}}>{t.icon}</div>
+      <div style={{fontSize:16,fontWeight:900,color:t.color}}>{typeName}</div>
+      {showDetail&&<>
+        <div style={{fontSize:12,color:C.sub,marginTop:6}}>
+          💪 <b>{t.str}</b>
+        </div>
+        <div style={{fontSize:12,color:C.sub,marginTop:2}}>
+          ⚠️ {t.weak}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+// ── 로그인 화면 ───────────────────────────────────
+function Login({mbs,onLogin,onSignup,onRefresh}){
+  const [id,setId]=useState("");
+  const [pw,setPw]=useState("");
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const go=async()=>{
+    if(!id.trim()||!pw.trim()){setErr("아이디와 비밀번호를 입력해주세요.");return;}
+    setLoading(true);setErr("확인 중...");
+    let list=[...mbs];
+    try{
+      const fresh=await gs("getMembers");
+      if(fresh?.length) {list=fresh;onRefresh(fresh);}
+    }catch(e){}
+    const found=list.find(m=>String(m.name).trim()===id.trim());
+    if(!found){setErr("존재하지 않는 아이디입니다.");setLoading(false);return;}
+    if(String(found.pw).trim()!==String(pw).trim()){setErr("비밀번호가 틀렸습니다.");setLoading(false);return;}
+    setLoading(false);onLogin(found);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",
+      alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:360,background:C.card,borderRadius:22,padding:"44px 36px",
+        border:`1px solid ${C.border}`,boxShadow:C.shL}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:40,marginBottom:8}}>🕯</div>
+          <div style={{fontSize:22,fontWeight:900,color:C.gold}}>머더 미스터리 기록</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:4,letterSpacing:2}}>MURDER MYSTERY RECORD</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:8}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>아이디</label>
+            <input value={id} onChange={e=>setId(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&go()}
+              placeholder="아이디 입력" style={inp}/>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>비밀번호</label>
+            <input type="password" value={pw} onChange={e=>setPw(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&go()}
+              placeholder="비밀번호 입력" style={inp}/>
+          </div>
+        </div>
+        {err&&<div style={{fontSize:12,color:err==="확인 중..."?C.muted:C.red,
+          textAlign:"center",margin:"8px 0",fontWeight:600}}>{err}</div>}
+        <div style={{marginTop:14}}><Btn full onClick={go} disabled={loading}>로그인</Btn></div>
+        <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}>
+          <div style={{flex:1,height:1,background:C.border}}/>
+          <span style={{fontSize:11,color:C.muted}}>또는</span>
+          <div style={{flex:1,height:1,background:C.border}}/>
+        </div>
+        <Btn full outline onClick={onSignup}>+ 새 계정 만들기</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── 회원가입 ──────────────────────────────────────
+function Signup({onDone,onBack,existingIds}){
+  const [step,setStep]=useState(0); // 0:기본정보 1-6:질문 7:주관식 8:결과
+  const [form,setForm]=useState({name:"",pw:"",av:"🕵️"});
+  const [ans,setAns]=useState(Array(6).fill(null)); // A/B/C
+  const [sub,setSub]=useState(["",""]);
+  const [result,setResult]=useState(null);
+  const [aiText,setAiText]=useState("");
+  const [loading,setLoading]=useState(false);
+  const total=9;
+  const pct=Math.round((step/total)*100);
+  const optLabels=["A","B","C"];
+
+  const doAI=async(typeName,subAnswers)=>{
+    setLoading(true);
+    try{
+      const prompt=`머더미스터리 플레이어 성향 분석.
+유형: ${typeName}
+${TYPES[typeName]?.str} 스타일의 플레이어입니다.
+주관식1: ${subAnswers[0]||"(미입력)"}
+주관식2: ${subAnswers[1]||"(미입력)"}
+
+위 정보를 바탕으로 이 플레이어만의 개성 있는 별명(20자 이내), 핵심 강점 1줄, 핵심 약점 1줄, 추천 역할 1줄을 JSON으로만 답해줘.
+{"nickname":"...","strength":"...","weakness":"...","role":"..."}`;
+      const txt=await gemini(prompt);
+      const match=txt.match(/\{[\s\S]*\}/);
+      if(match) setAiText(JSON.parse(match[0]));
+    }catch(e){setAiText(null);}
+    setLoading(false);
+  };
+
+  const doCalc=async()=>{
+    const abcAns=ans.map(a=>a!==null?optLabels[a]:null);
+    const typeName=calcType(abcAns);
+    setResult(typeName);
+    setStep(8);
+    doAI(typeName,sub);
+  };
+
+  const finish=async()=>{
+    const id=existingIds.length?Math.max(...existingIds)+1:1;
+    const member={id,name:form.name,pw:form.pw,av:form.av,
+      role:"member",type:result,
+      aiNickname:aiText?.nickname||"",
+      strength:aiText?.strength||TYPES[result]?.str||"",
+      weakness:aiText?.weakness||TYPES[result]?.weak||"",
+      recRole:aiText?.role||"",
+      friends:"[]",createdAt:new Date().toISOString().slice(0,10)};
+    try{await gs("addMember",member);}catch(e){}
+    onDone(member);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",
+      alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:480,background:C.card,
+        borderRadius:22,padding:"36px 32px",border:`1px solid ${C.border}`,boxShadow:C.shL}}>
+
+        {/* 진행바 */}
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+          <span style={{fontSize:16,fontWeight:700,color:C.gold}}>🕯 탐정 등록</span>
+          <span style={{fontSize:12,color:C.muted}}>Step {step+1}/{total}</span>
+        </div>
+        <div style={{height:5,background:C.border,borderRadius:3,marginBottom:26}}>
+          <div style={{height:"100%",width:`${pct}%`,background:C.gold,
+            borderRadius:3,transition:"width .4s"}}/>
+        </div>
+
+        {/* Step 0: 기본정보 */}
+        {step===0&&<div className="fade">
+          <div style={{fontSize:15,fontWeight:700,marginBottom:18}}>기본 정보 입력</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+            <div>
+              <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>아이디 *</label>
+              <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
+                placeholder="사용할 아이디" style={inp}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>비밀번호 *</label>
+              <input type="password" value={form.pw} onChange={e=>setForm(p=>({...p,pw:e.target.value}))}
+                placeholder="비밀번호" style={inp}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>아바타 이모지</label>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:52,height:52,borderRadius:"50%",background:C.goldL,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:28,border:`2px solid ${C.gold}`,flexShrink:0}}>{form.av||"🕵️"}</div>
+                <input value={form.av} onChange={e=>setForm(p=>({...p,av:e.target.value}))}
+                  placeholder="이모지 입력 (예: 🦊)" style={{...inp,width:"auto",flex:1}} maxLength={4}/>
+              </div>
+            </div>
+          </div>
+          <Btn full onClick={()=>setStep(1)} disabled={!form.name||!form.pw}>다음 →</Btn>
+        </div>}
+
+        {/* Step 1-6: 객관식 */}
+        {step>=1&&step<=6&&(()=>{
+          const qi=step-1;
+          const q=QUESTIONS[qi];
+          return(
+            <div className="fade">
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:1,marginBottom:8}}>
+                Q{step} / 6 — 성향 분석
+              </div>
+              <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:18,lineHeight:1.6}}>{q.q}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:22}}>
+                {q.opts.map((opt,i)=>{
+                  const sel=ans[qi]===i;
+                  return(
+                    <div key={i} className="hov"
+                      onClick={()=>{const a=[...ans];a[qi]=i;setAns(a);}}
+                      style={{padding:"12px 16px",borderRadius:10,cursor:"pointer",
+                        border:`1.5px solid ${sel?C.gold:C.border}`,
+                        background:sel?C.goldL:C.paper,
+                        display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{width:26,height:26,borderRadius:"50%",flexShrink:0,
+                        background:sel?C.gold:C.border,display:"flex",
+                        alignItems:"center",justifyContent:"center",
+                        fontSize:11,fontWeight:700,color:sel?"#fff":C.sub}}>
+                        {optLabels[i]}
+                      </div>
+                      <span style={{fontSize:13,color:C.text}}>{opt}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:9}}>
+                <Btn outline onClick={()=>setStep(s=>s-1)}>← 이전</Btn>
+                {step<6
+                  ?<Btn full onClick={()=>setStep(s=>s+1)} disabled={ans[qi]===null}>다음 →</Btn>
+                  :<Btn full onClick={()=>setStep(7)} disabled={ans[qi]===null}>다음 →</Btn>
+                }
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Step 7: 주관식 */}
+        {step===7&&<div className="fade">
+          <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:1,marginBottom:8}}>
+            주관식 — AI 개인화 분석
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:20}}>
+            {SUBQ.map((q,i)=>(
+              <div key={i}>
+                <label style={{fontSize:13,fontWeight:600,color:C.text,display:"block",marginBottom:7,lineHeight:1.5}}>{q}</label>
+                <textarea value={sub[i]} onChange={e=>{const s=[...sub];s[i]=e.target.value;setSub(s);}}
+                  style={{...inp,height:70,resize:"vertical"}} placeholder="자유롭게 작성 (선택)"/>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:9}}>
+            <Btn outline onClick={()=>setStep(6)}>← 이전</Btn>
+            <Btn full onClick={doCalc}>결과 보기 ✨</Btn>
+          </div>
+        </div>}
+
+        {/* Step 8: 결과 */}
+        {step===8&&result&&<div className="fade">
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:12}}>🎉 당신의 유형</div>
+            <TypeCard typeName={result} showDetail/>
+          </div>
+          {loading&&<div style={{textAlign:"center",padding:"16px 0",color:C.muted,fontSize:13}}>
+            🤖 AI가 개인 분석 중...
+          </div>}
+          {aiText&&!loading&&<div style={{background:C.goldL,borderRadius:10,padding:"14px 16px",marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.gold,marginBottom:8}}>✨ AI 개인 분석</div>
+            <div style={{fontSize:13,color:C.text,lineHeight:1.8}}>
+              <div>🏷️ <b>{aiText.nickname}</b></div>
+              <div>💪 {aiText.strength}</div>
+              <div>⚠️ {aiText.weakness}</div>
+              <div>🎭 추천 역할: {aiText.role}</div>
+            </div>
+          </div>}
+          <Btn full onClick={finish} disabled={loading}>가입 완료 🎉</Btn>
+          <div style={{marginTop:8}}><Btn full outline onClick={()=>setStep(1)}>다시 테스트</Btn></div>
+        </div>}
+
+        <div style={{textAlign:"center",marginTop:16}}>
+          <button className="btn" onClick={onBack}
+            style={{fontSize:12,color:C.muted,background:"transparent"}}>← 로그인으로</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 사이드바 ──────────────────────────────────────
+const NAV=[
+  {id:"dash",ic:"🗂",l:"대시보드"},
+  {id:"my",ic:"👤",l:"마이페이지"},
+  {id:"fri",ic:"🤝",l:"친구&궁합"},
+  {id:"crew",ic:"🏠",l:"모임 관리"},
+  {id:"theme",ic:"📚",l:"테마 DB"},
+  {id:"sch",ic:"📅",l:"일정·모집"},
+  {id:"rec",ic:"🔮",l:"AI 추천"},
+  {id:"hof",ic:"🏆",l:"명예의 전당"},
+];
+
+function Sidebar({page,setPage,me,badge,onLogout}){
+  const t=TYPES[me?.type]||{};
+  return(
+    <div style={{width:210,background:C.card,borderRight:`1px solid ${C.border}`,
+      display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
+      <div style={{padding:"20px 18px 14px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{fontSize:15,fontWeight:900,color:C.gold}}>머더 미스터리 기록</div>
+        <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginTop:2}}>MURDER MYSTERY RECORD</div>
+      </div>
+      <nav style={{flex:1,padding:"8px 0"}}>
+        {NAV.map(n=>{
+          const act=page===n.id;
+          return(
+            <div key={n.id} className="hov" onClick={()=>setPage(n.id)}
+              style={{display:"flex",alignItems:"center",gap:9,padding:"9px 18px",
+                borderLeft:`3px solid ${act?C.gold:"transparent"}`,
+                background:act?C.goldL:"transparent",
+                color:act?C.gold:C.sub,fontSize:13,fontWeight:act?700:400,cursor:"pointer"}}>
+              <span style={{fontSize:15}}>{n.ic}</span>{n.l}
+              {n.id==="theme"&&badge>0&&
+                <span style={{marginLeft:"auto",background:C.red,color:"#fff",
+                  fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:10}}>{badge}</span>}
+            </div>
+          );
+        })}
+      </nav>
+      <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+          <div style={{width:34,height:34,borderRadius:"50%",
+            background:t.bg||C.goldL,display:"flex",alignItems:"center",
+            justifyContent:"center",fontSize:18,border:`2px solid ${t.color||C.gold}`,flexShrink:0}}>
+            {me?.av||"🕵️"}
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>{me?.name}</div>
+            <div style={{fontSize:10,color:t.color||C.gold,fontWeight:600}}>
+              {t.icon} {me?.type||"유형 미설정"}
+            </div>
+          </div>
+        </div>
+        <button className="btn" onClick={onLogout}
+          style={{width:"100%",padding:6,fontSize:11,color:C.muted,
+            background:C.paper,border:`1px solid ${C.border}`,borderRadius:7}}>로그아웃</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 앱 루트 ───────────────────────────────────────
+function App(){
+  const [me,setMe]=useState(()=>{
+    try{const s=localStorage.getItem("mm_me");return s?JSON.parse(s):null;}catch{return null;}
+  });
+  const [page,setPage]=useState(()=>{
+    try{return localStorage.getItem("mm_page")||"dash";}catch{return "dash";}
+  });
+  const [auth,setAuth]=useState("login");
+  const [mbs,setMbs]=useState([]);
+  const [themes,setThemes]=useState([]);
+  const [records,setRecords]=useState([]);
+  const [schedules,setSchedules]=useState([]);
+  const [modal,setModal]=useState(null);
+
+  const goPage=p=>{setPage(p);try{localStorage.setItem("mm_page",p);}catch{}};
+  const close=()=>setModal(null);
+  const pending=themes.filter(t=>!t.ok&&t.status==="pending");
+
+  useEffect(()=>{
+    gs("getMembers").then(d=>{if(d?.length)setMbs(d);}).catch(()=>{});
+  },[]);
+
+  useEffect(()=>{
+    if(!me) return;
+    gs("getThemes").then(d=>{if(d) setThemes(d.map(safeTheme));}).catch(()=>{});
+    gs("getRecords").then(d=>{if(d) setRecords(d);}).catch(()=>{});
+    gs("getSchedules").then(d=>{if(d) setSchedules(d);}).catch(()=>{});
+  },[me]);
+
+  function safeTheme(t){
+    return{...t,
+      ok:t.ok===true||t.ok==="TRUE"||t.ok==="true",
+      characters:parseArr(t.characters),
+      tags:parseArr(t.tags,true),
+      diff:Number(t.diff)||3,
+      time:Number(t.time)||120,
+      rating:t.rating?Number(t.rating):null,
+    };
+  }
+  function parseArr(v,csv=false){
+    if(Array.isArray(v)) return v;
+    if(typeof v==="string"&&v.trim()){
+      if(csv) return v.split(",").map(s=>s.trim()).filter(Boolean);
+      try{return JSON.parse(v);}catch{}
+    }
+    return[];
+  }
+
+  const login=m=>{
+    setMe(m);
+    try{localStorage.setItem("mm_me",JSON.stringify(m));}catch{}
+    goPage("dash");
+  };
+  const logout=()=>{
+    setMe(null);
+    try{localStorage.removeItem("mm_me");localStorage.removeItem("mm_page");}catch{}
+  };
+
+  if(!me){
+    if(auth==="signup") return(
+      <Signup
+        onDone={m=>{setMbs(p=>[...p,m]);login(m);setAuth("login");}}
+        onBack={()=>setAuth("login")}
+        existingIds={mbs.map(m=>m.id).filter(Boolean).map(Number)}
+      />
+    );
+    return(
+      <Login mbs={mbs} onLogin={login} onSignup={()=>setAuth("signup")}
+        onRefresh={setMbs}/>
+    );
+  }
+
+  const props={me,mbs,setMbs,themes,setThemes,records,setRecords,
+    schedules,setSchedules,goPage,modal,setModal,close};
+
+  return(
+    <div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+      <Sidebar page={page} setPage={goPage} me={me} badge={me?.role==="admin"?pending.length:0} onLogout={logout}/>
+      <main style={{flex:1,overflowY:"auto",padding:"32px 36px",minWidth:0}}>
+        {page==="dash"  &&<Dash {...props}/>}
+        {page==="my"    &&<MyPage {...props}/>}
+        {page==="fri"   &&<Friends {...props}/>}
+        {page==="crew"  &&<Crew {...props}/>}
+        {page==="theme" &&<ThemeDB {...props}/>}
+        {page==="sch"   &&<Schedule {...props}/>}
+        {page==="rec"   &&<AIRec {...props}/>}
+        {page==="hof"   &&<HoF {...props}/>}
+      </main>
+      {modal&&<ModalRouter {...props}/>}
+    </div>
+  );
+}
+
+// ── 모달 라우터 ───────────────────────────────────
+function ModalRouter(props){
+  const{modal,close}=props;
+  if(modal?.t==="addRecord")  return <Modal title="기록 추가" onClose={close}><RecordForm {...props}/></Modal>;
+  if(modal?.t==="editRecord") return <Modal title="기록 수정" onClose={close}><RecordForm init={modal.d} {...props}/></Modal>;
+  if(modal?.t==="addTheme")   return <Modal title="테마 제보" onClose={close} wide><ThemeForm {...props}/></Modal>;
+  if(modal?.t==="addSch")     return <Modal title="일정 등록" onClose={close}><SchForm {...props}/></Modal>;
+  if(modal?.t==="addCrew")    return <Modal title="모임 만들기" onClose={close}><CrewForm {...props}/></Modal>;
+  if(modal?.t==="themeDetail")return <Modal title={modal.d?.title} onClose={close} wide><ThemeDetail d={modal.d} {...props}/></Modal>;
+  return null;
+}
+
+// ── 대시보드 ──────────────────────────────────────
+function Dash({me,records,themes,schedules,goPage,setModal}){
+  const myR=records.filter(r=>{
+    const mbs=Array.isArray(r.mbs)?r.mbs:[];
+    return mbs.includes(me.id)||mbs.includes(String(me.id));
+  });
+  const wins=myR.filter(r=>r.res==="성공").length;
+  const mvps=myR.filter(r=>String(r.mvp)===String(me.id)).length;
+  const t=TYPES[me.type]||{};
+  return(
+    <div className="fade">
+      <div style={{marginBottom:24}}>
+        <h1 style={{fontSize:24,fontWeight:900,color:C.text}}>대시보드</h1>
+        <p style={{fontSize:13,color:C.muted,marginTop:3}}>{me.name} 탐정님, 오늘의 사건을 시작하세요</p>
+      </div>
+      {/* 성향 카드 */}
+      {me.type&&<div style={{background:t.bg,border:`1px solid ${t.color}30`,
+        borderRadius:13,padding:"16px 20px",marginBottom:20,
+        display:"flex",alignItems:"center",gap:16}}>
+        <div style={{fontSize:36}}>{t.icon}</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:15,fontWeight:700,color:t.color}}>{me.type}</div>
+          {me.aiNickname&&<div style={{fontSize:12,color:C.sub,marginTop:2}}>"{me.aiNickname}"</div>}
+          <div style={{fontSize:12,color:C.sub,marginTop:4}}>
+            💪 {me.strength||t.str} &nbsp;·&nbsp; ⚠️ {me.weakness||t.weak}
+          </div>
+        </div>
+      </div>}
+      {/* 통계 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {l:"총 플레이",v:`${myR.length}회`,ic:"🎭",c:C.gold},
+          {l:"성공률",v:myR.length?`${Math.round(wins/myR.length*100)}%`:"—",ic:"✅",c:C.green},
+          {l:"MVP",v:`${mvps}회`,ic:"🏆",c:"#D97706"},
+          {l:"승리",v:`${wins}회`,ic:"⚔️",c:"#7C3AED"},
+        ].map(x=>(
+          <Card key={x.l} style={{textAlign:"center",padding:"16px 12px"}}>
+            <div style={{fontSize:22,marginBottom:4}}>{x.ic}</div>
+            <div style={{fontSize:22,fontWeight:900,color:x.c}}>{x.v}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:2}}>{x.l}</div>
+          </Card>
+        ))}
+      </div>
+      {/* 최근 기록 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Card>
+          <div style={{fontSize:12,fontWeight:700,color:C.gold,marginBottom:12}}>최근 플레이</div>
+          {myR.length===0&&<div style={{color:C.muted,fontSize:13,padding:"12px 0"}}>기록이 없어요</div>}
+          {myR.slice(-3).reverse().map(r=>(
+            <div key={r.id} style={{padding:"9px 0",borderBottom:`1px solid ${C.border}`,
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600}}>{r.themeTitle||"—"}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>{r.date}</div>
+              </div>
+              <span style={{padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:600,
+                background:r.res==="성공"?C.greenL:C.redL,
+                color:r.res==="성공"?C.green:C.red}}>{r.res}</span>
+            </div>
+          ))}
+          <button className="btn" onClick={()=>goPage("my")}
+            style={{fontSize:12,color:C.gold,background:"transparent",
+              padding:"7px 0",marginTop:4}}>마이페이지 전체 보기 →</button>
+        </Card>
+        <Card>
+          <div style={{fontSize:12,fontWeight:700,color:C.gold,marginBottom:12}}>다가오는 일정</div>
+          {schedules.length===0&&<div style={{color:C.muted,fontSize:13,padding:"12px 0"}}>일정이 없어요</div>}
+          {schedules.slice(0,3).map(s=>(
+            <div key={s.id} style={{background:C.paper,border:`1px solid ${C.border}`,
+              borderRadius:9,padding:"10px 12px",marginBottom:7}}>
+              <div style={{fontSize:13,fontWeight:600}}>{s.title}</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.date} {s.time}</div>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── 마이페이지 ────────────────────────────────────
+function MyPage({me,records,themes,setModal,setRecords}){
+  const myR=records.filter(r=>{
+    const mbs=Array.isArray(r.mbs)?r.mbs:[];
+    return mbs.includes(me.id)||mbs.includes(String(me.id));
+  });
+  const wins=myR.filter(r=>r.res==="성공").length;
+  const mvps=myR.filter(r=>String(r.mvp)===String(me.id)).length;
+  const t=TYPES[me.type]||{};
+
+  const delRec=async(id)=>{
+    if(!window.confirm("삭제하시겠습니까?")) return;
+    try{await gs("deleteRecord",null,id);}catch{}
+    setRecords(p=>p.filter(r=>r.id!==id));
+  };
+
+  return(
+    <div className="fade">
+      <h1 style={{fontSize:24,fontWeight:900,marginBottom:20}}>마이페이지</h1>
+      <Card style={{marginBottom:16}}>
+        <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{width:62,height:62,borderRadius:"50%",background:t.bg||C.goldL,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:32,border:`3px solid ${t.color||C.gold}`,flexShrink:0}}>
+            {me.av||"🕵️"}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:20,fontWeight:900}}>{me.name}</div>
+            {me.type&&<div style={{display:"flex",gap:7,marginTop:5,flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:700,color:t.color,
+                background:t.bg,padding:"2px 10px",borderRadius:20}}>
+                {t.icon} {me.type}
+              </span>
+              {me.aiNickname&&<span style={{fontSize:12,color:C.sub}}>"{me.aiNickname}"</span>}
+            </div>}
+            {me.recRole&&<div style={{fontSize:12,color:C.muted,marginTop:4}}>🎭 추천 역할: {me.recRole}</div>}
+          </div>
+          <div style={{display:"flex",gap:20}}>
+            {[["🎭",myR.length,"플레이"],["✅",wins,"성공"],["🏆",mvps,"MVP"]].map(([ic,v,l])=>(
+              <div key={l} style={{textAlign:"center"}}>
+                <div style={{fontSize:20,fontWeight:900,color:C.gold}}>{ic} {v}</div>
+                <div style={{fontSize:11,color:C.muted}}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+      {me.strength&&<Card style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.gold,marginBottom:10}}>AI 성향 분석</div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <div style={{flex:1,background:C.greenL,borderRadius:9,padding:"10px 14px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.green,marginBottom:3}}>💪 강점</div>
+            <div style={{fontSize:13}}>{me.strength}</div>
+          </div>
+          <div style={{flex:1,background:C.redL,borderRadius:9,padding:"10px 14px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.red,marginBottom:3}}>⚠️ 약점</div>
+            <div style={{fontSize:13}}>{me.weakness}</div>
+          </div>
+        </div>
+      </Card>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:14,fontWeight:700}}>플레이 기록</div>
+        <Btn sm onClick={()=>setModal({t:"addRecord"})}>+ 기록 추가</Btn>
+      </div>
+      {myR.length===0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>기록을 추가해보세요!</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:9}}>
+        {myR.map(r=>(
+          <Card key={r.id} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:5}}>
+                <span style={{fontSize:14,fontWeight:700}}>{r.themeTitle||"?"}</span>
+                <span style={{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,
+                  background:r.res==="성공"?C.greenL:C.redL,color:r.res==="성공"?C.green:C.red}}>
+                  {r.res}</span>
+                {String(r.mvp)===String(me.id)&&<span>🏆</span>}
+              </div>
+              <div style={{fontSize:11,color:C.muted}}>📅 {r.date} · ⭐{r.myRating||r.rating||"—"}</div>
+              {r.review&&<div style={{fontSize:12,color:C.sub,marginTop:6,
+                padding:"5px 9px",background:C.paper,borderRadius:5,
+                borderLeft:`3px solid ${C.border}`}}>{r.review}</div>}
+            </div>
+            <div style={{display:"flex",gap:5,flexShrink:0}}>
+              <Btn sm outline onClick={()=>setModal({t:"editRecord",d:r})}>수정</Btn>
+              <Btn sm outline red onClick={()=>delRec(r.id)}>삭제</Btn>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 친구&궁합 ─────────────────────────────────────
+function Friends({me,mbs,setMbs,records}){
+  const [tab,setTab]=useState("list");
+  const [search,setSearch]=useState("");
+  const [searchResult,setSearchResult]=useState(null);
+  const [sel,setSel]=useState(null);
+
+  const myFriends=(()=>{
+    let fl=me.friends;
+    if(typeof fl==="string"){try{fl=JSON.parse(fl);}catch{fl=[];}}
+    if(!Array.isArray(fl)) fl=[];
+    return mbs.filter(m=>fl.map(String).includes(String(m.id)));
+  })();
+
+  const addFri=async(fid)=>{
+    const fl=myFriends.map(m=>m.id);
+    if(fl.includes(fid)) return;
+    const newFl=[...fl,fid];
+    const updated={...me,friends:JSON.stringify(newFl)};
+    try{await gs("updateMember",updated);}catch{}
+    setMbs(p=>p.map(m=>String(m.id)===String(me.id)?{...m,friends:JSON.stringify(newFl)}:m));
+  };
+
+  const doSearch=()=>{
+    if(!search.trim()){setSearchResult("empty");return;}
+    const found=mbs.find(m=>String(m.name).trim()===search.trim()&&String(m.id)!==String(me.id));
+    setSearchResult(found||"notfound");
+  };
+
+  const sf=sel?mbs.find(m=>String(m.id)===String(sel)):null;
+  const compat=sf?getCompat(me.type,sf.type):null;
+
+  function getCompat(a,b){
+    if(!a||!b) return null;
+    const ta=TYPES[a],tb=TYPES[b];
+    if(!ta||!tb) return null;
+    const dx=Math.abs(ta.axis[0]-tb.axis[0]);
+    const dy=Math.abs(ta.axis[1]-tb.axis[1]);
+    const dist=dx+dy;
+    const score=Math.max(40,100-dist*15);
+    const label=score>=85?"천생연분 ✨":score>=70?"찰떡궁합 👍":score>=55?"무난한 조합":"도전적 조합 🔥";
+    const color=score>=85?"#059669":score>=70?"#2563EB":score>=55?"#D97706":"#DC2626";
+    return{score,label,color};
+  }
+
+  const shared=sf?records.filter(r=>{
+    const mbs2=Array.isArray(r.mbs)?r.mbs.map(String):[];
+    return mbs2.includes(String(me.id))&&mbs2.includes(String(sf.id));
+  }):[];
+
+  return(
+    <div className="fade">
+      <h1 style={{fontSize:24,fontWeight:900,marginBottom:20}}>친구 &amp; 궁합</h1>
+      <div style={{display:"flex",gap:7,marginBottom:18}}>
+        {[["list","👥 내 친구"],["search","🔍 친구 찾기"],["compat","💑 궁합 분석"]].map(([t,l])=>(
+          <button key={t} className="btn" onClick={()=>setTab(t)}
+            style={{padding:"7px 17px",borderRadius:8,fontSize:13,
+              background:tab===t?C.gold:"transparent",color:tab===t?"#fff":C.sub,
+              border:`1.5px solid ${tab===t?C.gold:C.border}`,fontWeight:tab===t?700:400}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab==="list"&&<div>
+        {myFriends.length===0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>아직 친구가 없어요. 친구 찾기로 추가해보세요!</div>}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+          {myFriends.map(f=>{
+            const ft=TYPES[f.type]||{};
+            const cp=getCompat(me.type,f.type);
+            return(
+              <Card key={f.id} style={{cursor:"pointer"}}
+                onClick={()=>{setSel(f.id);setTab("compat");}}>
+                <div style={{display:"flex",gap:9,alignItems:"center",marginBottom:10}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",
+                    background:ft.bg||C.goldL,display:"flex",alignItems:"center",
+                    justifyContent:"center",fontSize:20,border:`2px solid ${ft.color||C.gold}`}}>
+                    {f.av||"🕵️"}
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700}}>{f.name}</div>
+                    <div style={{fontSize:11,color:ft.color||C.gold}}>{ft.icon} {f.type||"?"}</div>
+                  </div>
+                </div>
+                {cp&&<div>
+                  <div style={{height:4,background:C.border,borderRadius:2,marginBottom:4}}>
+                    <div style={{height:"100%",width:`${cp.score}%`,background:cp.color,borderRadius:2}}/>
+                  </div>
+                  <div style={{fontSize:11,color:cp.color,fontWeight:600}}>{cp.label} ({cp.score}점)</div>
+                </div>}
+              </Card>
+            );
+          })}
+        </div>
+      </div>}
+
+      {tab==="search"&&<div>
+        <Card style={{marginBottom:14}}>
+          <div style={{fontSize:13,color:C.sub,marginBottom:12}}>
+            🔒 정확한 아이디를 입력해야만 친구를 찾을 수 있어요
+          </div>
+          <div style={{display:"flex",gap:9}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&doSearch()}
+              placeholder="친구 아이디 정확히 입력" style={{...inp,flex:1}}/>
+            <Btn onClick={doSearch}>검색</Btn>
+          </div>
+        </Card>
+        {searchResult==="empty"&&<div style={{color:C.muted,fontSize:13}}>아이디를 입력해주세요.</div>}
+        {searchResult==="notfound"&&<div style={{color:C.red,fontSize:13}}>존재하지 않는 아이디입니다.</div>}
+        {searchResult&&searchResult!=="empty"&&searchResult!=="notfound"&&(()=>{
+          const f=searchResult;
+          const ft=TYPES[f.type]||{};
+          const isFri=myFriends.some(m=>String(m.id)===String(f.id));
+          return(
+            <Card>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:48,height:48,borderRadius:"50%",
+                  background:ft.bg||C.goldL,display:"flex",alignItems:"center",
+                  justifyContent:"center",fontSize:26,border:`2px solid ${ft.color||C.gold}`}}>
+                  {f.av||"🕵️"}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:700}}>{f.name}</div>
+                  <div style={{fontSize:12,color:ft.color||C.gold}}>{ft.icon} {f.type||"유형 미설정"}</div>
+                </div>
+                {isFri
+                  ?<span style={{fontSize:13,color:C.green,fontWeight:700}}>✓ 이미 친구</span>
+                  :<Btn sm onClick={()=>{addFri(f.id);setSearch("");setSearchResult(null);}}>+ 친구 추가</Btn>
+                }
+              </div>
+            </Card>
+          );
+        })()}
+      </div>}
+
+      {tab==="compat"&&<div>
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:7}}>분석할 친구 선택</label>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+            {myFriends.map(f=>(
+              <div key={f.id} className="hov" onClick={()=>setSel(f.id)}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"7px 13px",
+                  borderRadius:20,border:`1.5px solid ${String(sel)===String(f.id)?C.gold:C.border}`,
+                  background:String(sel)===String(f.id)?C.goldL:C.paper,cursor:"pointer"}}>
+                <span style={{fontSize:16}}>{f.av||"🕵️"}</span>
+                <span style={{fontSize:13,fontWeight:String(sel)===String(f.id)?700:400}}>{f.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {sf&&compat&&<Card style={{textAlign:"center",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"center",gap:28,marginBottom:14,flexWrap:"wrap"}}>
+            {[me,sf].map((m,i)=>{
+              const mt=TYPES[m.type]||{};
+              return(
+                <div key={i} style={{textAlign:"center"}}>
+                  <div style={{width:50,height:50,borderRadius:"50%",background:mt.bg||C.goldL,
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:26,border:`2px solid ${mt.color||C.gold}`,margin:"0 auto 6px"}}>
+                    {m.av||"🕵️"}
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700}}>{m.name}</div>
+                  <div style={{fontSize:11,color:mt.color||C.gold}}>{mt.icon} {m.type||"?"}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{fontSize:48,fontWeight:900,color:compat.color,lineHeight:1}}>{compat.score}</div>
+          <div style={{fontSize:14,fontWeight:700,color:compat.color,marginTop:4}}>{compat.label}</div>
+          <div style={{height:6,background:C.border,borderRadius:3,maxWidth:240,margin:"12px auto 0"}}>
+            <div style={{height:"100%",width:`${compat.score}%`,background:compat.color,borderRadius:3,transition:"width .8s"}}/>
+          </div>
+          <div style={{marginTop:14,fontSize:12,color:C.muted}}>
+            함께한 기록: <b style={{color:C.text}}>{shared.length}회</b>
+          </div>
+        </Card>}
+        {!sf&&myFriends.length===0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>먼저 친구를 추가해보세요!</div>}
+        {!sf&&myFriends.length>0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>위에서 친구를 선택해주세요.</div>}
+      </div>}
+    </div>
+  );
+}
+
+// ── 모임 관리 ─────────────────────────────────────
+function Crew({me,mbs,setModal,records}){
+  const [crews,setCrews]=useState([]);
+  const [sel,setSel]=useState(null);
+  const [aiReport,setAiReport]=useState({});
+  const [loading,setLoading]=useState(false);
+
+  const myFriendIds=(()=>{
+    let fl=me.friends;
+    if(typeof fl==="string"){try{fl=JSON.parse(fl);}catch{fl=[];}}
+    return Array.isArray(fl)?fl.map(String):[];
+  })();
+  const myFriends=mbs.filter(m=>myFriendIds.includes(String(m.id)));
+
+  const getReport=async(crew)=>{
+    const key=crew.map(id=>id).sort().join(",");
+    if(aiReport[key]){setSel({members:crew,report:aiReport[key]});return;}
+    setLoading(true);setSel({members:crew,report:null});
+    const memberData=crew.map(id=>mbs.find(m=>String(m.id)===String(id))).filter(Boolean);
+    const prompt=`머더미스터리 모임 궁합 분석.
+멤버 목록:
+${memberData.map(m=>`- ${m.name}: ${m.type||"?"}형 (강점: ${m.strength||TYPES[m.type]?.str||"미설정"})`).join("\n")}
+
+이 모임의 시너지 점수(0-100), 케미 특징 2줄, 추천 시나리오 스타일을 JSON으로만 답해줘.
+{"score":85,"chemistry":"...","recommend":"..."}`;
+    try{
+      const txt=await gemini(prompt);
+      const match=txt.match(/\{[\s\S]*\}/);
+      const report=match?JSON.parse(match[0]):{score:70,chemistry:"다양한 스타일의 조합",recommend:"밸런스형 시나리오"};
+      setAiReport(p=>({...p,[key]:report}));
+      setSel({members:crew,report});
+    }catch{setSel({members:crew,report:{score:70,chemistry:"분석 실패",recommend:"—"}});}
+    setLoading(false);
+  };
+
+  return(
+    <div className="fade">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontSize:24,fontWeight:900}}>모임 관리</h1>
+        <Btn onClick={()=>setModal({t:"addCrew"})}>+ 모임 만들기</Btn>
+      </div>
+      {crews.length===0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>
+        친구와 오늘의 모임을 만들어 AI 궁합 분석을 받아보세요!
+      </div>}
+      {sel&&<Card style={{marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.gold,marginBottom:10}}>🤖 AI 궁합 리포트</div>
+        {loading&&<div style={{color:C.muted,fontSize:13}}>분석 중...</div>}
+        {sel.report&&<>
+          <div style={{fontSize:38,fontWeight:900,color:sel.report.score>=70?C.green:C.gold,
+            textAlign:"center",marginBottom:8}}>{sel.report.score}점</div>
+          <div style={{fontSize:13,color:C.text,lineHeight:1.7,marginBottom:8}}>{sel.report.chemistry}</div>
+          <div style={{background:C.goldL,borderRadius:8,padding:"9px 13px",fontSize:12,color:"#92400E"}}>
+            🎯 추천 시나리오 스타일: {sel.report.recommend}
+          </div>
+        </>}
+      </Card>}
+      <div style={{display:"flex",flexDirection:"column",gap:9}}>
+        {crews.map((crew,i)=>{
+          const members=crew.map(id=>mbs.find(m=>String(m.id)===String(id))).filter(Boolean);
+          return(
+            <Card key={i} style={{cursor:"pointer"}} onClick={()=>getReport(crew)}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{display:"flex",gap:4}}>{members.map(m=>(
+                  <div key={m.id} style={{width:32,height:32,borderRadius:"50%",
+                    background:C.goldL,display:"flex",alignItems:"center",
+                    justifyContent:"center",fontSize:17,border:`1.5px solid ${C.gold}`}}>
+                    {m.av||"🕵️"}
+                  </div>
+                ))}</div>
+                <div style={{flex:1,fontSize:13}}>{members.map(m=>m.name).join(", ")}</div>
+                <span style={{fontSize:11,color:C.gold}}>분석 →</span>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── 테마 DB ───────────────────────────────────────
+function ThemeDB({me,themes,setThemes,records,setModal}){
+  const [filter,setFilter]=useState("전체");
+  const [search,setSearch]=useState("");
+  const themeTypes=["전체",...new Set(themes.filter(t=>t.ok).map(t=>t.theme).filter(Boolean))];
+  const official=themes.filter(t=>t.ok&&(filter==="전체"||t.theme===filter)
+    &&(!search||t.title?.includes(search)));
+  const pending=themes.filter(t=>!t.ok&&t.status==="pending");
+
+  const approve=async(id)=>{
+    const t=themes.find(x=>x.id===id);if(!t)return;
+    const updated={...t,ok:true};
+    try{await gs("updateTheme",updated);}catch{}
+    setThemes(p=>p.map(x=>x.id===id?updated:x));
+  };
+  const reject=async(id)=>{
+    try{await gs("deleteTheme",null,id);}catch{}
+    setThemes(p=>p.filter(x=>x.id!==id));
+  };
+
+  return(
+    <div className="fade">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontSize:24,fontWeight:900}}>테마 DB</h1>
+        <Btn onClick={()=>setModal({t:"addTheme"})}>+ 테마 제보</Btn>
+      </div>
+      {me.role==="admin"&&pending.length>0&&<div style={{
+        background:C.redL,border:`1px solid #FECACA`,borderRadius:11,
+        padding:"13px 17px",marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.red,marginBottom:9}}>⏳ 승인 대기 {pending.length}건</div>
+        {pending.map(t=>(
+          <div key={t.id} style={{background:"#fff",borderRadius:9,padding:"9px 13px",
+            marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700}}>{t.title} <span style={{fontSize:11,color:C.gold,fontWeight:400}}>[{t.theme}]</span></div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{t.subAt}</div>
+            </div>
+            <div style={{display:"flex",gap:5}}>
+              <Btn sm onClick={()=>approve(t.id)}>✓ 승인</Btn>
+              <Btn sm outline red onClick={()=>reject(t.id)}>✕ 거절</Btn>
+            </div>
+          </div>
+        ))}
+      </div>}
+      <div style={{display:"flex",gap:9,marginBottom:14,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="테마 검색..." style={{...inp,maxWidth:200,flex:"none"}}/>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          {themeTypes.map(t=>(
+            <button key={t} className="btn" onClick={()=>setFilter(t)}
+              style={{padding:"5px 13px",borderRadius:20,fontSize:12,
+                background:filter===t?C.gold:"transparent",color:filter===t?"#fff":C.sub,
+                border:`1px solid ${filter===t?C.gold:C.border}`}}>{t}</button>
+          ))}
+        </div>
+      </div>
+      {official.length===0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>테마가 없어요. 제보해주세요!</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:13}}>
+        {official.map(t=>{
+          const tRecs=records.filter(r=>String(r.themeId)===String(t.id));
+          const avgR=tRecs.length?Math.round(tRecs.reduce((s,r)=>s+(Number(r.myRating)||0),0)/tRecs.length*10)/10:null;
+          return(
+            <Card key={t.id} className="hov" style={{cursor:"pointer"}}
+              onClick={()=>setModal({t:"themeDetail",d:t})}>
+              <div style={{marginBottom:7}}>
+                <span style={{background:C.goldL,color:C.gold,padding:"2px 8px",
+                  borderRadius:20,fontSize:11,fontWeight:600}}>{t.theme||"기타"}</span>
+              </div>
+              <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>{t.title}</div>
+              <div style={{display:"flex",gap:9,fontSize:11,color:C.muted,marginBottom:7}}>
+                <span>👥 {t.pl||"?"}인</span>
+                <span>⏱ {t.time||"?"}분</span>
+                <span>{"★".repeat(Math.round(t.diff||3))}{"☆".repeat(5-Math.round(t.diff||3))}</span>
+              </div>
+              {t.desc&&<div style={{fontSize:12,color:C.sub,lineHeight:1.5,marginBottom:8,
+                overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+                {t.desc}
+              </div>}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                {avgR?<span style={{fontSize:12,color:"#D97706"}}>⭐{avgR} ({tRecs.length}명)</span>
+                  :<span style={{fontSize:12,color:C.muted}}>리뷰 없음</span>}
+                <span style={{fontSize:11,color:C.gold}}>자세히 →</span>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── 테마 상세 ─────────────────────────────────────
+function ThemeDetail({d,me,records,setRecords,mbs}){
+  const [rev,setRev]=useState("");
+  const [rating,setRating]=useState(5);
+  const [spoiler,setSpoiler]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+
+  const reviews=records.filter(r=>String(r.themeId)===String(d.id)&&r.review);
+
+  const submit=async()=>{
+    if(!rev.trim()) return;
+    setSubmitting(true);
+    const rec={id:Date.now(),themeId:d.id,themeTitle:d.title,
+      authorId:me.id,authorName:me.name,
+      date:new Date().toISOString().slice(0,10),
+      myRating:rating,review:rev,spoiler};
+    try{await gs("addRecord",rec);}catch{}
+    setRecords(p=>[...p,rec]);
+    setRev("");setSubmitting(false);
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        <span style={{background:C.goldL,color:C.gold,padding:"2px 8px",borderRadius:20,fontSize:11}}>{d.theme}</span>
+        <span style={{fontSize:12,color:C.muted}}>👥 {d.pl||"?"}인</span>
+        <span style={{fontSize:12,color:C.muted}}>⏱ {d.time||"?"}분</span>
+        <span style={{fontSize:12,color:C.muted}}>{"★".repeat(Math.round(d.diff||3))}</span>
+      </div>
+      {d.desc&&<p style={{fontSize:13,color:C.sub,lineHeight:1.7,marginBottom:16}}>{d.desc}</p>}
+      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>리뷰 작성</div>
+        <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+          <span style={{fontSize:12,color:C.sub}}>평점:</span>
+          {[1,2,3,4,5].map(n=>(
+            <span key={n} style={{fontSize:20,cursor:"pointer",color:n<=rating?"#D97706":"#E5D9C8"}}
+              onClick={()=>setRating(n)}>★</span>
+          ))}
+        </div>
+        <textarea value={rev} onChange={e=>setRev(e.target.value)}
+          style={{...inp,height:70,resize:"vertical",marginBottom:8}}
+          placeholder="플레이 후기를 작성해주세요"/>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+            <input type="checkbox" checked={spoiler} onChange={e=>setSpoiler(e.target.checked)}/>
+            스포일러 포함
+          </label>
+        </div>
+        <Btn onClick={submit} disabled={submitting||!rev.trim()}>리뷰 등록</Btn>
+      </div>
+      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>리뷰 ({reviews.length})</div>
+        {reviews.length===0&&<div style={{color:C.muted,fontSize:13}}>아직 리뷰가 없어요.</div>}
+        {reviews.map(r=>(
+          <div key={r.id} style={{marginBottom:12,paddingBottom:12,borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:13,fontWeight:600}}>{r.authorName||"?"}</span>
+                <span style={{fontSize:11,color:"#D97706"}}>{"★".repeat(r.myRating||5)}</span>
+              </div>
+              <span style={{fontSize:11,color:C.muted}}>{r.date}</span>
+            </div>
+            {r.spoiler
+              ?<div className="spoiler" style={{fontSize:13,color:C.sub,lineHeight:1.6}}
+                title="클릭하면 스포일러가 공개됩니다">
+                  <span style={{fontSize:11,color:C.red,marginRight:6}}>[스포주의]</span>{r.review}
+                </div>
+              :<div style={{fontSize:13,color:C.sub,lineHeight:1.6}}>{r.review}</div>
+            }
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 일정 ─────────────────────────────────────────
+function Schedule({me,mbs,schedules,setSchedules,themes,setModal}){
+  const attend=async(id)=>{
+    const s=schedules.find(x=>x.id===id);if(!s)return;
+    const att=Array.isArray(s.att)?s.att.map(String):[];
+    const has=att.includes(String(me.id));
+    const newAtt=has?att.filter(i=>i!==String(me.id)):[...att,String(me.id)];
+    const updated={...s,att:newAtt};
+    try{await gs("updateSchedule",updated);}catch{}
+    setSchedules(p=>p.map(x=>x.id===id?updated:x));
+  };
+  const del=async(id)=>{
+    if(!window.confirm("삭제하시겠습니까?"))return;
+    try{await gs("deleteSchedule",null,id);}catch{}
+    setSchedules(p=>p.filter(x=>x.id!==id));
+  };
+  const copy=s=>{
+    const txt=`📅 ${s.title}\n🕐 ${s.date} ${s.time||""}\n📍 ${s.loc||"장소 미정"}`;
+    navigator.clipboard.writeText(txt).then(()=>alert("복사됐어요! 카카오톡에 붙여넣기 하세요 😊"));
+  };
+
+  return(
+    <div className="fade">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h1 style={{fontSize:24,fontWeight:900}}>일정·모집</h1>
+        <Btn onClick={()=>setModal({t:"addSch"})}>+ 일정 등록</Btn>
+      </div>
+      {schedules.length===0&&<div style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>일정을 등록해보세요!</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+        {schedules.map(s=>{
+          const att=Array.isArray(s.att)?s.att.map(String):[];
+          const isAtt=att.includes(String(me.id));
+          const isHost=String(s.host)===String(me.id);
+          const canEdit=isHost||me.role==="admin";
+          const pct=s.max?Math.round(att.length/s.max*100):0;
+          const attMembers=mbs.filter(m=>att.includes(String(m.id)));
+          return(
+            <Card key={s.id}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                <span style={{fontSize:11,padding:"2px 9px",borderRadius:20,
+                  background:C.greenL,color:C.green,fontWeight:600}}>● 모집중</span>
+                <span style={{fontSize:11,color:C.muted}}>{s.date} {s.time||""}</span>
+              </div>
+              <div style={{fontSize:16,fontWeight:700,marginBottom:4}}>{s.title}</div>
+              {s.loc&&<div style={{fontSize:12,color:C.muted,marginBottom:8}}>📍 {s.loc}</div>}
+              <div style={{height:4,background:C.border,borderRadius:2,marginBottom:8}}>
+                <div style={{height:"100%",width:`${pct}%`,background:C.gold,borderRadius:2}}/>
+              </div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
+                {attMembers.map(m=>(
+                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:3,
+                    padding:"2px 8px",borderRadius:20,fontSize:11,
+                    background:String(m.id)===String(me.id)?C.goldL:C.paper,
+                    color:String(m.id)===String(me.id)?C.gold:C.muted,
+                    border:`1px solid ${String(m.id)===String(me.id)?C.goldB:C.border}`}}>
+                    {m.av||"🕵️"} {m.name}
+                  </div>
+                ))}
+                <span style={{fontSize:11,color:C.muted,alignSelf:"center"}}>
+                  {att.length}/{s.max||"?"}명
+                </span>
+              </div>
+              <div style={{display:"flex",gap:7}}>
+                <Btn full sm={false} outline={isAtt} onClick={()=>attend(s.id)}
+                  style={{flex:1}}>
+                  {isAtt?"✓ 참석 취소":"🙋 참석하기"}
+                </Btn>
+                <button className="btn" onClick={()=>copy(s)}
+                  style={{padding:"6px 10px",borderRadius:8,border:`1.5px solid ${C.border}`,
+                    background:C.paper,fontSize:12,color:C.sub}}>📋 공유</button>
+                {canEdit&&<button className="btn" onClick={()=>del(s.id)}
+                  style={{padding:"6px 10px",borderRadius:8,border:`1.5px solid #FECACA`,
+                    background:C.redL,fontSize:12,color:C.red}}>삭제</button>}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── AI 추천 ───────────────────────────────────────
+function AIRec({me,themes,records}){
+  const [rec,setRec]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const today=new Date().toISOString().slice(0,10);
+  const cacheKey=`mm_airec_${me.id}_${today}`;
+
+  useEffect(()=>{
+    try{
+      const cached=localStorage.getItem(cacheKey);
+      if(cached){setRec(JSON.parse(cached));return;}
+    }catch{}
+    getAIRec();
+  },[]);
+
+  const getAIRec=async()=>{
+    setLoading(true);
+    const played=records.filter(r=>{
+      const mbs=Array.isArray(r.mbs)?r.mbs.map(String):[];
+      return mbs.includes(String(me.id));
+    }).map(r=>r.themeTitle).filter(Boolean);
+    const unplayed=themes.filter(t=>t.ok&&!played.includes(t.title));
+    if(unplayed.length===0){setRec({text:"모든 테마를 플레이하셨네요! 새 테마를 제보해주세요."});setLoading(false);return;}
+    const prompt=`머더미스터리 탐정 ${me.name}님 (${me.type||"유형 미설정"}, 강점: ${me.strength||"미설정"})에게 오늘의 추천 테마.
+
+플레이 가능한 테마: ${unplayed.slice(0,5).map(t=>t.title).join(", ")||"없음"}
+
+한 가지를 추천하고 그 이유를 2-3문장으로 설명해줘. 친근한 말투로.`;
+    try{
+      const txt=await gemini(prompt);
+      const result={text:txt,date:today};
+      setRec(result);
+      try{localStorage.setItem(cacheKey,JSON.stringify(result));}catch{}
+    }catch{setRec({text:"AI 추천을 불러오지 못했어요. 잠시 후 다시 시도해주세요."});}
+    setLoading(false);
+  };
+
+  const myR=records.filter(r=>{
+    const mbs=Array.isArray(r.mbs)?r.mbs.map(String):[];
+    return mbs.includes(String(me.id));
+  });
+  const unplayedThemes=themes.filter(t=>t.ok&&!myR.map(r=>r.themeTitle).includes(t.title));
+
+  return(
+    <div className="fade">
+      <h1 style={{fontSize:24,fontWeight:900,marginBottom:20}}>AI 추천</h1>
+      <Card style={{marginBottom:20}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.gold,marginBottom:12}}>🤖 오늘의 맞춤 추천</div>
+        {loading&&<div style={{color:C.muted,fontSize:13}}>AI가 분석 중...</div>}
+        {rec&&<div style={{fontSize:13,color:C.text,lineHeight:1.8}}>{rec.text}</div>}
+        <div style={{marginTop:12}}>
+          <Btn sm outline onClick={getAIRec} disabled={loading}>다시 추천받기</Btn>
+        </div>
+      </Card>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:12}}>미플레이 테마 ({unplayedThemes.length})</div>
+      <div style={{display:"flex",flexDirection:"column",gap:9}}>
+        {unplayedThemes.slice(0,5).map(t=>(
+          <Card key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:600}}>{t.title}</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{t.theme} · {t.time}분</div>
+            </div>
+            <span style={{fontSize:11,color:C.gold,fontWeight:600}}>추천 ↑</span>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 명예의 전당 ───────────────────────────────────
+function HoF({mbs,records}){
+  const stats=mbs.map(m=>{
+    const myR=records.filter(r=>{
+      const mb=Array.isArray(r.mbs)?r.mbs.map(String):[];
+      return mb.includes(String(m.id));
+    });
+    const mvps=myR.filter(r=>String(r.mvp)===String(m.id)).length;
+    const wins=myR.filter(r=>r.res==="성공").length;
+    const rate=myR.length?Math.round(wins/myR.length*100):0;
+    return{...m,games:myR.length,mvps,wins,rate};
+  }).sort((a,b)=>b.mvps-a.mvps||b.wins-a.wins);
+
+  const medals=["🥇","🥈","🥉"];
+  const top3=stats.slice(0,3);
+
+  return(
+    <div className="fade">
+      <h1 style={{fontSize:24,fontWeight:900,marginBottom:24}}>명예의 전당</h1>
+      {/* 시상대 */}
+      {top3.length>0&&<div style={{display:"flex",justifyContent:"center",
+        alignItems:"flex-end",gap:20,marginBottom:32}}>
+        {[top3[1],top3[0],top3[2]].filter(Boolean).map((m,i)=>{
+          const h=[100,140,80][i];
+          const mt=TYPES[m.type]||{};
+          return(
+            <div key={m.id} style={{textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>{m.av||"🕵️"}</div>
+              <div style={{fontSize:13,fontWeight:700}}>{m.name}</div>
+              <div style={{fontSize:11,color:mt.color||C.gold,marginBottom:6}}>{mt.icon} {m.type||"?"}</div>
+              <div style={{width:80,height:h,borderRadius:"6px 6px 0 0",
+                background:i===1?C.goldL:"rgba(180,83,9,.07)",
+                border:`2px solid ${i===1?C.gold:C.border}`,
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
+                {medals[[1,0,2][i]]}
+              </div>
+            </div>
+          );
+        })}
+      </div>}
+      {/* 전체 랭킹 */}
+      <Card>
+        <div style={{fontSize:12,fontWeight:700,color:C.gold,marginBottom:12}}>전체 랭킹 (MVP 기준)</div>
+        {stats.map((m,i)=>{
+          const mt=TYPES[m.type]||{};
+          return(
+            <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,
+              padding:"11px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{width:24,fontSize:15,textAlign:"center",flexShrink:0}}>
+                {medals[i]||`${i+1}`}
+              </div>
+              <div style={{width:34,height:34,borderRadius:"50%",flexShrink:0,
+                background:mt.bg||C.goldL,display:"flex",alignItems:"center",
+                justifyContent:"center",fontSize:18,border:`1.5px solid ${mt.color||C.gold}`}}>
+                {m.av||"🕵️"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700}}>{m.name}</div>
+                <div style={{fontSize:11,color:mt.color||C.gold}}>{mt.icon} {m.type||"?"} · 승률 {m.rate}%</div>
+              </div>
+              {[["🏆",m.mvps,"MVP"],["✅",m.wins,"승리"],["🎭",m.games,"게임"]].map(([ic,v,l])=>(
+                <div key={l} style={{textAlign:"center",minWidth:42}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.gold}}>{ic} {v}</div>
+                  <div style={{fontSize:10,color:C.muted}}>{l}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
+// ── 폼들 ──────────────────────────────────────────
+function RecordForm({me,mbs,themes,records,setRecords,close,init}){
+  const [f,setF]=useState(init||{themeId:"",themeTitle:"",date:"",res:"성공",
+    mbs:[me.id],mvp:me.id,myRating:5,review:"",spoiler:false});
+  const u=(k,v)=>setF(p=>({...p,[k]:v}));
+  const officialThemes=themes.filter(t=>t.ok);
+
+  const save=async()=>{
+    const rec={...f,id:f.id||Date.now(),authorId:me.id};
+    try{
+      if(init) await gs("updateRecord",rec);
+      else await gs("addRecord",rec);
+    }catch{}
+    if(init) setRecords(p=>p.map(r=>r.id===rec.id?rec:r));
+    else setRecords(p=>[...p,rec]);
+    close();
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:13}}>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>테마 *</label>
+        <select value={f.themeId} onChange={e=>{
+          const id=Number(e.target.value);
+          const t=officialThemes.find(x=>x.id===id);
+          u("themeId",id);u("themeTitle",t?.title||"");
+        }} style={inp}>
+          <option value="">선택</option>
+          {officialThemes.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+      </div>
+      <div style={{display:"flex",gap:9}}>
+        <div style={{flex:2}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>날짜 *</label>
+          <input type="date" value={f.date} onChange={e=>u("date",e.target.value)} style={inp}/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>결과</label>
+          <select value={f.res} onChange={e=>u("res",e.target.value)} style={inp}>
+            <option>성공</option><option>실패</option>
+          </select>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>평점</label>
+          <select value={f.myRating} onChange={e=>u("myRating",Number(e.target.value))} style={inp}>
+            {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}점</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>같이 플레이한 멤버</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+          {mbs.filter(m=>String(m.id)!==String(me.id)).map(m=>{
+            const sel=f.mbs.map(String).includes(String(m.id));
+            return(
+              <div key={m.id} onClick={()=>{
+                const cur=f.mbs.map(String);
+                u("mbs",sel?cur.filter(i=>i!==String(m.id)):[...cur,String(m.id)]);
+              }} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",
+                borderRadius:20,border:`1.5px solid ${sel?C.gold:C.border}`,
+                background:sel?C.goldL:C.paper,cursor:"pointer",fontSize:12,fontWeight:sel?700:400}}>
+                {m.av||"🕵️"} {m.name} {sel?"✓":""}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>후기</label>
+        <textarea value={f.review} onChange={e=>u("review",e.target.value)}
+          style={{...inp,height:65,resize:"vertical"}} placeholder="플레이 후기 (선택)"/>
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,cursor:"pointer"}}>
+        <input type="checkbox" checked={f.spoiler} onChange={e=>u("spoiler",e.target.checked)}/>
+        스포일러 포함
+      </label>
+      <div style={{display:"flex",gap:8}}>
+        <Btn full onClick={save}>저장</Btn>
+        <Btn outline onClick={close}>취소</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ThemeForm({me,setThemes,close}){
+  const [f,setF]=useState({title:"",theme:"공포",pl:"4-6",time:120,diff:3,desc:"",tags:""});
+  const u=(k,v)=>setF(p=>({...p,[k]:v}));
+
+  const save=async()=>{
+    const t={...f,id:Date.now(),ok:false,status:"pending",
+      time:Number(f.time),diff:Number(f.diff),
+      tags:f.tags,subAt:new Date().toISOString().slice(0,10),sub:me.id};
+    try{await gs("addTheme",t);}catch{}
+    setThemes(p=>[...p,{...t,tags:t.tags.split(",").map(s=>s.trim()).filter(Boolean),characters:[]}]);
+    close();
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:13}}>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>테마 제목 *</label>
+        <input value={f.title} onChange={e=>u("title",e.target.value)} placeholder="테마 이름" style={inp}/>
+      </div>
+      <div style={{display:"flex",gap:9}}>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>장르</label>
+          <select value={f.theme} onChange={e=>u("theme",e.target.value)} style={inp}>
+            {["공포","로맨스","고전","미스터리","스릴러","코미디","판타지","SF"].map(t=>(
+              <option key={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>인원</label>
+          <input value={f.pl} onChange={e=>u("pl",e.target.value)} style={inp} placeholder="4-6"/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>시간(분)</label>
+          <input type="number" value={f.time} onChange={e=>u("time",e.target.value)} style={inp}/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>난이도</label>
+          <input type="number" min="1" max="5" value={f.diff} onChange={e=>u("diff",e.target.value)} style={inp}/>
+        </div>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>간단 설명</label>
+        <textarea value={f.desc} onChange={e=>u("desc",e.target.value)}
+          style={{...inp,height:65,resize:"vertical"}} placeholder="테마 소개 (선택)"/>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>태그 (쉼표 구분)</label>
+        <input value={f.tags} onChange={e=>u("tags",e.target.value)} style={inp} placeholder="밀실, 유령, 추리"/>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn full onClick={save} disabled={!f.title}>제보하기</Btn>
+        <Btn outline onClick={close}>취소</Btn>
+      </div>
+    </div>
+  );
+}
+
+function SchForm({me,themes,setSchedules,close}){
+  const [f,setF]=useState({themeId:"",title:"",date:"",time:"19:00",loc:"",max:6,host:me.id,att:[me.id]});
+  const u=(k,v)=>setF(p=>({...p,[k]:v}));
+  const officialThemes=themes.filter(t=>t.ok);
+
+  const save=async()=>{
+    const s={...f,id:Date.now(),max:Number(f.max)};
+    try{await gs("addSchedule",s);}catch{}
+    setSchedules(p=>[...p,s]);
+    close();
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:13}}>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>테마</label>
+        <select value={f.themeId} onChange={e=>{
+          const id=Number(e.target.value);
+          const t=officialThemes.find(x=>x.id===id);
+          u("themeId",id);if(t)u("title",t.title);
+        }} style={inp}>
+          <option value="">선택</option>
+          {officialThemes.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>일정 제목 *</label>
+        <input value={f.title} onChange={e=>u("title",e.target.value)} placeholder="예) 5월 정기 게임" style={inp}/>
+      </div>
+      <div style={{display:"flex",gap:9}}>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>날짜 *</label>
+          <input type="date" value={f.date} onChange={e=>u("date",e.target.value)} style={inp}/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>시간</label>
+          <input type="time" value={f.time} onChange={e=>u("time",e.target.value)} style={inp}/>
+        </div>
+        <div style={{flex:1}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>최대 인원</label>
+          <input type="number" value={f.max} onChange={e=>u("max",e.target.value)} style={inp}/>
+        </div>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:C.sub,display:"block",marginBottom:5}}>장소</label>
+        <input value={f.loc} onChange={e=>u("loc",e.target.value)} placeholder="장소 입력" style={inp}/>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn full onClick={save} disabled={!f.title||!f.date}>등록</Btn>
+        <Btn outline onClick={close}>취소</Btn>
+      </div>
+    </div>
+  );
+}
+
+function CrewForm({me,mbs,setModal,close}){
+  const [sel,setSel]=useState([String(me.id)]);
+  const myFriendIds=(()=>{
+    let fl=me.friends;
+    if(typeof fl==="string"){try{fl=JSON.parse(fl);}catch{fl=[];}}
+    return Array.isArray(fl)?fl.map(String):[];
+  })();
+  const myFriends=mbs.filter(m=>myFriendIds.includes(String(m.id)));
+
+  const toggle=id=>{
+    if(id===String(me.id)) return;
+    setSel(p=>p.includes(id)?p.filter(i=>i!==id):[...p,id]);
+  };
+
+  const analyze=()=>{
+    close();
+    setModal({t:"crewResult",members:sel});
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:13}}>
+      <div style={{fontSize:13,color:C.sub}}>오늘 함께할 멤버를 선택하면 AI가 궁합을 분석해드려요.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:7}}>
+        {[me,...myFriends].map(m=>{
+          const s=sel.includes(String(m.id));
+          const isMe=String(m.id)===String(me.id);
+          const mt=TYPES[m.type]||{};
+          return(
+            <div key={m.id} onClick={()=>toggle(String(m.id))}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px",
+                borderRadius:9,border:`1.5px solid ${s?C.gold:C.border}`,
+                background:s?C.goldL:C.paper,cursor:isMe?"default":"pointer"}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:mt.bg||C.goldL,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:18,border:`1.5px solid ${mt.color||C.gold}`,flexShrink:0}}>
+                {m.av||"🕵️"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600}}>{m.name}{isMe?" (나)":""}</div>
+                <div style={{fontSize:11,color:mt.color||C.gold}}>{mt.icon} {m.type||"?"}</div>
+              </div>
+              {s&&!isMe&&<span style={{color:C.gold,fontWeight:700}}>✓</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn full onClick={analyze} disabled={sel.length<2}>AI 궁합 분석 →</Btn>
+        <Btn outline onClick={close}>취소</Btn>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
