@@ -471,10 +471,10 @@ function Sidebar({page,setPage,me,badge,onLogout}){
 // ── 앱 루트 ───────────────────────────────────────
 function App(){
   const [me,setMe]=useState(()=>{
-    try{const s=sessionStorage.getItem("mm_me");return s?JSON.parse(s):null;}catch{return null;}
+    try{const s=localStorage.getItem("mm_me");return s?JSON.parse(s):null;}catch{return null;}
   });
   const [page,setPage]=useState(()=>{
-    try{return sessionStorage.getItem("mm_page")||"dash";}catch{return "dash";}
+    try{return localStorage.getItem("mm_page")||"dash";}catch{return "dash";}
   });
   const [auth,setAuth]=useState("login");
   const [mbs,setMbs]=useState([]);
@@ -483,7 +483,7 @@ function App(){
   const [schedules,setSchedules]=useState([]);
   const [modal,setModal]=useState(null);
 
-  const goPage=p=>{setPage(p);try{sessionStorage.setItem("mm_page",p);}catch{}};
+  const goPage=p=>{setPage(p);try{localStorage.setItem("mm_page",p);}catch{}};
   const close=()=>setModal(null);
   const pending=themes.filter(t=>!t.ok&&t.status==="pending");
 
@@ -519,12 +519,12 @@ function App(){
 
   const login=m=>{
     setMe(m);
-    try{sessionStorage.setItem("mm_me",JSON.stringify(m));}catch{}
+    try{localStorage.setItem("mm_me",JSON.stringify(m));}catch{}
     goPage("dash");
   };
   const logout=()=>{
     setMe(null);
-    try{sessionStorage.removeItem("mm_me");sessionStorage.removeItem("mm_page");}catch{}
+    try{localStorage.removeItem("mm_me");localStorage.removeItem("mm_page");}catch{}
   };
 
   if(!me){
@@ -1268,7 +1268,7 @@ function AIRec({me,themes,records}){
 
   useEffect(()=>{
     try{
-      const cached=sessionStorage.getItem(cacheKey);
+      const cached=localStorage.getItem(cacheKey);
       if(cached){setRec(JSON.parse(cached));return;}
     }catch{}
     getAIRec();
@@ -1291,7 +1291,7 @@ function AIRec({me,themes,records}){
       const txt=await gemini(prompt);
       const result={text:txt,date:today};
       setRec(result);
-      try{sessionStorage.setItem(cacheKey,JSON.stringify(result));}catch{}
+      try{localStorage.setItem(cacheKey,JSON.stringify(result));}catch{}
     }catch{setRec({text:"AI 추천을 불러오지 못했어요. 잠시 후 다시 시도해주세요."});}
     setLoading(false);
   };
