@@ -168,7 +168,7 @@ export default function ScenarioSearch() {
         ) : (
           <>
             <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순)</div>
-            <ScrollBox maxHeight={560}>
+            <ScrollBox maxHeight="clamp(280px, calc(100vh - 380px), 640px)">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
                 {filtered.map((s) => (
                   <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
