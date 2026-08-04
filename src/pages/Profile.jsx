@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { TYPE_META } from "../lib/personality.js";
-import { AVATAR_EMOJIS, displayAvatar, displayName } from "../lib/profileDisplay.js";
+import { AVATAR_EMOJIS, displayName } from "../lib/profileDisplay.js";
+import { resizeImageToDataUrl } from "../lib/image.js";
+import Avatar from "../components/Avatar.jsx";
 import { Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function Profile() {
@@ -15,6 +17,31 @@ export default function Profile() {
   const [nickname, setNickname] = useState(profile?.nickname || profile?.name || "");
   const [avatarEmoji, setAvatarEmoji] = useState(profile?.avatarEmoji || "");
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef(null);
+
+  async function handlePhotoSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadError("");
+    setUploadingPhoto(true);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      await updateDoc(doc(db, "users", profile.id), { avatarPhotoURL: dataUrl });
+      setProfile((p) => ({ ...p, avatarPhotoURL: dataUrl }));
+    } catch (err) {
+      setUploadError(err.message || "사진 업로드에 실패했어요.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function removePhoto() {
+    await updateDoc(doc(db, "users", profile.id), { avatarPhotoURL: null });
+    setProfile((p) => ({ ...p, avatarPhotoURL: null }));
+  }
 
   function startEdit() {
     setNickname(profile?.nickname || profile?.name || "");
@@ -32,8 +59,6 @@ export default function Profile() {
     setEditing(false);
   }
 
-  const avatar = displayAvatar(profile);
-
   return (
     <div className="fade-in" style={{ maxWidth: 480 }}>
       <PageHeader title="프로필" />
@@ -41,15 +66,7 @@ export default function Profile() {
         {!editing ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: "50%", overflow: "hidden",
-                border: "1.5px solid var(--accent)", background: "var(--accent-dim)",
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
-              }}>
-                {avatar || (profile?.photoURL
-                  ? <img src={profile.photoURL} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  : (main?.icon ?? "🕵️"))}
-              </div>
+              <Avatar profile={profile} size={56} style={{ fontSize: 26 }} />
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{displayName(profile)}</div>
                 <div style={{ fontSize: 12.5, color: "var(--text-sub)" }}>{profile?.email}</div>
@@ -71,18 +88,21 @@ export default function Profile() {
               )}
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {main && (
-                <Link to="/style-test" style={{ flex: 1 }}>
-                  <OutlineButton style={{ width: "100%" }}>테스트 다시 하기</OutlineButton>
+                <Link to="/style-test" style={{ flex: "1 1 130px" }}>
+                  <OutlineButton style={{ width: "100%", whiteSpace: "nowrap", padding: "0 10px" }}>테스트 다시 하기</OutlineButton>
                 </Link>
               )}
               {profile?.isAdmin && (
-                <Link to="/admin" style={{ flex: 1 }}>
-                  <OutlineButton style={{ width: "100%" }}>관리자 페이지</OutlineButton>
+                <Link to="/admin" style={{ flex: "1 1 130px" }}>
+                  <OutlineButton style={{ width: "100%", whiteSpace: "nowrap", padding: "0 10px" }}>관리자 페이지</OutlineButton>
                 </Link>
               )}
-              <OutlineButton style={{ flex: 1, borderColor: "var(--danger)", color: "var(--danger)" }} onClick={signOut}>
+              <OutlineButton
+                style={{ flex: "1 1 130px", whiteSpace: "nowrap", padding: "0 10px", borderColor: "var(--danger)", color: "var(--danger)" }}
+                onClick={signOut}
+              >
                 로그아웃
               </OutlineButton>
             </div>
@@ -100,7 +120,40 @@ export default function Profile() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 6 }}>아바타</label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 6 }}>프로필 사진</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <Avatar profile={profile} size={48} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoSelected}
+                  style={{ display: "none" }}
+                />
+                <OutlineButton
+                  type="button"
+                  style={{ height: 36, padding: "0 14px", fontSize: 12.5 }}
+                  disabled={uploadingPhoto}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploadingPhoto ? "업로드 중…" : "사진 올리기"}
+                </OutlineButton>
+                {profile?.avatarPhotoURL && (
+                  <OutlineButton
+                    type="button"
+                    style={{ height: 36, padding: "0 14px", fontSize: 12.5, borderColor: "var(--danger)", color: "var(--danger)" }}
+                    onClick={removePhoto}
+                  >
+                    제거
+                  </OutlineButton>
+                )}
+              </div>
+              {uploadError && <div style={{ fontSize: 11.5, color: "var(--danger)", marginTop: 6 }}>{uploadError}</div>}
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 6 }}>
+                아바타 (사진이 없을 때 표시돼요)
+              </label>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 8 }}>
                 {AVATAR_EMOJIS.map((em) => (
                   <button

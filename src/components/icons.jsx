@@ -30,6 +30,30 @@ export const CommunityIcon = (props) => (
   <svg {...base} {...props}><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z" /></svg>
 );
 
+export const GroupIcon = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M2.5 20c.8-3.4 3.2-5 6.5-5s5.7 1.6 6.5 5" />
+    <circle cx="17" cy="8.5" r="2.6" />
+    <path d="M15.5 12c2.2.4 3.6 1.7 4.2 3.6" />
+  </svg>
+);
+
+export const SearchIcon = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="10.5" cy="10.5" r="6.5" />
+    <path d="m20 20-4.6-4.6" />
+  </svg>
+);
+
+export const FriendAddIcon = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="9" cy="8" r="4" />
+    <path d="M2 21c1-4 3.5-6 7-6s6 2 7 6" />
+    <path d="M18 8h4M20 6v4" />
+  </svg>
+);
+
 export const ProfileIcon = (props) => (
   <svg {...base} {...props}>
     <circle cx="12" cy="8" r="4" />

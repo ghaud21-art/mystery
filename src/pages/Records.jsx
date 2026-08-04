@@ -9,15 +9,23 @@ const EMPTY_FORM = { scenarioName: "", character: "", rating: 5, note: "", spoil
 export default function Records() {
   const { profile } = useAuth();
   const [records, setRecords] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
   const [revealed, setRevealed] = useState({});
 
   async function load() {
-    const snap = await getDocs(
-      query(collection(db, "records"), where("userId", "==", profile.id), orderBy("date", "desc"))
-    );
-    setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    try {
+      setLoadError("");
+      const snap = await getDocs(
+        query(collection(db, "records"), where("userId", "==", profile.id), orderBy("date", "desc"))
+      );
+      setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error(err);
+      setLoadError("기록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+      setRecords([]);
+    }
   }
 
   useEffect(() => {
@@ -70,6 +78,9 @@ export default function Records() {
         </Card>
       )}
 
+      {loadError && (
+        <div style={{ fontSize: 12.5, color: "var(--danger)", marginBottom: 12 }}>{loadError}</div>
+      )}
       {records === null ? (
         <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
       ) : records.length === 0 ? (

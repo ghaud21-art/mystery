@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  addDoc, collection, doc, getDoc, getDocs, onSnapshot, orderBy, query,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query,
   serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -10,11 +10,13 @@ import { compat, compatLabel, TYPE_META } from "../lib/personality.js";
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
+import Avatar from "../components/Avatar.jsx";
 
 const TABS = [
   { id: "schedules", label: "일정" },
   { id: "availability", label: "가능일" },
   { id: "compat", label: "궁합" },
+  { id: "unplayed", label: "같이 안한 머미" },
 ];
 
 const CATEGORIES = ["머더미스터리", "방탈출", "보드게임", "기타"];
@@ -22,10 +24,13 @@ const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime:
 
 export default function GroupDetail() {
   const { groupId } = useParams();
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const [group, setGroup] = useState(null);
   const [members, setMembers] = useState([]);
   const [tab, setTab] = useState("schedules");
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "groups", groupId), (snap) => {
@@ -53,26 +58,64 @@ export default function GroupDetail() {
     );
   }
 
+  async function saveName() {
+    const name = nameDraft.trim();
+    if (!name) return;
+    await updateDoc(doc(db, "groups", group.id), { name });
+    setEditingName(false);
+  }
+
+  async function deleteGroup() {
+    if (!window.confirm(`"${group.name}" 모임을 삭제할까요? 모임 안의 모든 일정도 함께 삭제돼요.`)) return;
+    const schedSnap = await getDocs(query(collection(db, "schedules"), where("groupId", "==", group.id)));
+    await Promise.all(schedSnap.docs.map((d) => deleteDoc(d.ref)));
+    await deleteDoc(doc(db, "groups", group.id));
+    navigate("/schedule");
+  }
+
   return (
     <div className="fade-in">
       <Link to="/schedule" style={{ fontSize: 12.5, color: "var(--text-sub)" }}>← 모임 목록</Link>
-      <PageHeader
-        eyebrow="MEETUP"
-        title={group.name}
-        action={
-          <div style={{ display: "flex", gap: -6 }}>
-            {members.map((m) => (
-              <div key={m.id} title={displayName(m)} style={{
-                width: 32, height: 32, borderRadius: "50%", background: "var(--accent-dim)",
-                border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 14, marginLeft: -8,
-              }}>
-                {displayAvatar(m) || "🕵️"}
+
+      {!editingName ? (
+        <PageHeader
+          eyebrow="MEETUP"
+          title={group.name}
+          action={
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex" }}>
+                {members.map((m) => (
+                  <div key={m.id} title={displayName(m)} style={{ marginLeft: -8 }}>
+                    <Avatar profile={m} size={32} style={{ fontSize: 14, border: "2px solid var(--bg)" }} />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        }
-      />
+              <OutlineButton
+                style={{ height: 32, padding: "0 12px", fontSize: 12 }}
+                onClick={() => { setNameDraft(group.name); setEditingName(true); }}
+              >
+                편집
+              </OutlineButton>
+            </div>
+          }
+        />
+      ) : (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "16px 0 24px" }}>
+          <input
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            style={{ ...inputStyle, flex: 1, fontSize: 16, fontWeight: 700 }}
+            autoFocus
+          />
+          <PrimaryButton style={{ height: 40 }} onClick={saveName}>저장</PrimaryButton>
+          <OutlineButton style={{ height: 40 }} onClick={() => setEditingName(false)}>취소</OutlineButton>
+          <OutlineButton style={{ height: 40, borderColor: "var(--danger)", color: "var(--danger)" }} onClick={deleteGroup}>
+            모임 삭제
+          </OutlineButton>
+        </div>
+      )}
+
+      <AnnouncementBanner group={group} profile={profile} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: "1px solid var(--border)" }}>
         {TABS.map((t) => (
@@ -94,20 +137,99 @@ export default function GroupDetail() {
       {tab === "schedules" && <SchedulesTab group={group} profile={profile} />}
       {tab === "availability" && <AvailabilityTab group={group} members={members} profile={profile} />}
       {tab === "compat" && <CompatTab members={members} />}
+      {tab === "unplayed" && <UnplayedTab members={members} />}
+    </div>
+  );
+}
+
+export function AnnouncementBanner({ group, profile }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(group.announcement?.text || "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const text = draft.trim();
+    await updateDoc(doc(db, "groups", group.id), {
+      announcement: text
+        ? { text, authorName: displayName(profile), updatedAt: new Date().toISOString() }
+        : null,
+    });
+    setSaving(false);
+    setEditing(false);
+  }
+
+  if (!editing && !group.announcement) {
+    return (
+      <button
+        onClick={() => { setDraft(""); setEditing(true); }}
+        style={{
+          width: "100%", textAlign: "left", marginBottom: 20, padding: "12px 16px", borderRadius: 10,
+          border: "1.5px dashed var(--border)", background: "transparent", color: "var(--text-sub)", fontSize: 12.5,
+        }}
+      >
+        📢 모임 공지사항을 등록해보세요 (모임원 누구나 가능)
+      </button>
+    );
+  }
+
+  return (
+    <div style={{
+      marginBottom: 20, padding: "14px 18px", borderRadius: 12,
+      background: "linear-gradient(135deg, var(--accent-dim), transparent)", border: "1.5px solid var(--accent)",
+    }}>
+      {!editing ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)", letterSpacing: 1 }}>📢 공지사항</div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4, whiteSpace: "pre-wrap" }}>{group.announcement.text}</div>
+            <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 6 }}>{group.announcement.authorName}</div>
+          </div>
+          <OutlineButton style={{ height: 30, padding: "0 12px", fontSize: 11.5, flex: "none" }} onClick={() => { setDraft(group.announcement.text); setEditing(true); }}>
+            수정
+          </OutlineButton>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <textarea
+            autoFocus
+            rows={2}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="모임원들에게 알릴 내용을 적어주세요 (비우고 저장하면 공지가 사라져요)"
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} onClick={() => setEditing(false)}>취소</OutlineButton>
+            <PrimaryButton style={{ height: 32, padding: "0 14px", fontSize: 12 }} disabled={saving} onClick={save}>
+              {saving ? "저장 중…" : "저장"}
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function SchedulesTab({ group, profile }) {
   const [items, setItems] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   async function load() {
-    const snap = await getDocs(
-      query(collection(db, "schedules"), where("groupId", "==", group.id), orderBy("datetime", "asc"))
-    );
-    setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    try {
+      setLoadError("");
+      const snap = await getDocs(
+        query(collection(db, "schedules"), where("groupId", "==", group.id), orderBy("datetime", "asc"))
+      );
+      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error(err);
+      setLoadError("일정을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+      setItems([]);
+    }
   }
 
   useEffect(() => { load(); }, [group.id]);
@@ -120,18 +242,41 @@ function SchedulesTab({ group, profile }) {
     return set;
   }, [items, profile.id]);
 
-  async function createSchedule(e) {
-    e.preventDefault();
-    await addDoc(collection(db, "schedules"), {
-      ...form,
-      groupId: group.id,
-      hostId: profile.id,
-      hostName: displayName(profile),
-      attendees: { [profile.id]: "yes" },
-      createdAt: serverTimestamp(),
-    });
+  function startCreate() {
+    setEditingId(null);
     setForm(EMPTY_FORM);
+    setShowForm(true);
+  }
+
+  function startEdit(s) {
+    setEditingId(s.id);
+    setForm({ category: s.category || CATEGORIES[0], title: s.title, location: s.location, datetime: s.datetime });
+    setShowForm(true);
+  }
+
+  async function submitForm(e) {
+    e.preventDefault();
+    if (editingId) {
+      await updateDoc(doc(db, "schedules", editingId), { ...form });
+    } else {
+      await addDoc(collection(db, "schedules"), {
+        ...form,
+        groupId: group.id,
+        hostId: profile.id,
+        hostName: displayName(profile),
+        attendees: { [profile.id]: "yes" },
+        createdAt: serverTimestamp(),
+      });
+    }
+    setForm(EMPTY_FORM);
+    setEditingId(null);
     setShowForm(false);
+    load();
+  }
+
+  async function removeSchedule(id) {
+    if (!window.confirm("이 일정을 삭제할까요?")) return;
+    await deleteDoc(doc(db, "schedules", id));
     load();
   }
 
@@ -146,18 +291,20 @@ function SchedulesTab({ group, profile }) {
       <Card>
         <MonthCalendar markedDates={markedDates} />
         <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />
           내가 참석하는 일정
         </div>
       </Card>
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <PrimaryButton onClick={() => setShowForm((s) => !s)}>{showForm ? "닫기" : "+ 일정 추가"}</PrimaryButton>
+        <PrimaryButton onClick={() => (showForm ? setShowForm(false) : startCreate())}>
+          {showForm ? "닫기" : "+ 일정 추가"}
+        </PrimaryButton>
       </div>
 
       {showForm && (
         <Card>
-          <form onSubmit={createSchedule} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <form onSubmit={submitForm} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {CATEGORIES.map((c) => (
                 <button
@@ -181,11 +328,14 @@ function SchedulesTab({ group, profile }) {
               onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
             <input required type="datetime-local" value={form.datetime}
               onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
-            <PrimaryButton type="submit">등록하기</PrimaryButton>
+            <PrimaryButton type="submit">{editingId ? "수정 저장" : "등록하기"}</PrimaryButton>
           </form>
         </Card>
       )}
 
+      {loadError && (
+        <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{loadError}</div>
+      )}
       {items === null ? (
         <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
       ) : items.length === 0 ? (
@@ -194,6 +344,7 @@ function SchedulesTab({ group, profile }) {
         items.map((s) => {
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
+          const isHost = s.hostId === profile.id;
           return (
             <Card key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
               <div>
@@ -208,9 +359,20 @@ function SchedulesTab({ group, profile }) {
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참석 {yesCount}명</div>
               </div>
-              <OutlineButton onClick={() => vote(s.id, mine)}>
-                {mine === "yes" ? "참석 취소" : "참석하기"}
-              </OutlineButton>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <OutlineButton onClick={() => vote(s.id, mine)}>
+                  {mine === "yes" ? "참석 취소" : "참석하기"}
+                </OutlineButton>
+                <OutlineButton style={{ height: 44, padding: "0 14px" }} onClick={() => startEdit(s)}>수정</OutlineButton>
+                {isHost && (
+                  <OutlineButton
+                    style={{ height: 44, padding: "0 14px", borderColor: "var(--danger)", color: "var(--danger)" }}
+                    onClick={() => removeSchedule(s.id)}
+                  >
+                    삭제
+                  </OutlineButton>
+                )}
+              </div>
             </Card>
           );
         })
@@ -340,6 +502,66 @@ function CompatTab({ members }) {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+function UnplayedTab({ members }) {
+  const [scenarios, setScenarios] = useState(null);
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
+      setScenarios(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    })();
+  }, []);
+
+  async function findUnplayed() {
+    setLoading(true);
+    const playedSets = await Promise.all(
+      members.map(async (m) => {
+        const snap = await getDocs(query(collection(db, "records"), where("userId", "==", m.id)));
+        return new Set(snap.docs.map((d) => (d.data().scenarioName || "").trim().toLowerCase()));
+      })
+    );
+    const unplayed = scenarios.filter((s) => {
+      const key = s.title.trim().toLowerCase();
+      return playedSets.some((set) => !set.has(key));
+    });
+    setResults(unplayed);
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 13, color: "var(--text-sub)" }}>
+          이 모임 멤버({members.map((m) => displayName(m)).join(", ")}) 중 한 명이라도 안 해본
+          시나리오를 우리 DB에서 찾아드려요.
+        </div>
+        <PrimaryButton onClick={findUnplayed} disabled={loading || !scenarios}>
+          {loading ? "찾는 중…" : "같이 안 한 머미 찾기"}
+        </PrimaryButton>
+      </Card>
+
+      {results !== null && (
+        results.length === 0 ? (
+          <Card><EmptyState>이 모임은 우리 DB에 있는 시나리오를 전부 해봤어요! 🎉</EmptyState></Card>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {results.map((s) => (
+              <Card key={s.id} style={{ padding: "12px 16px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                  {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )
       )}
     </div>
   );

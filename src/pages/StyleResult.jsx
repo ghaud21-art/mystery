@@ -3,12 +3,28 @@ import { Link } from "react-router-dom";
 import { toPng } from "html-to-image";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SURVEY, TYPE_KEYS, TYPE_META } from "../lib/personality.js";
-import { Badge, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { analyzeStyle, canUseAI, KAKAO_CONTACT_URL } from "../lib/ai.js";
+import { AILimitNotice, Badge, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function StyleResult() {
-  const { profile } = useAuth();
+  const { profile, setProfile } = useAuth();
   const cardRef = useRef(null);
   const [busy, setBusy] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+
+  async function handleAnalyze() {
+    setAnalyzeError("");
+    setAnalyzing(true);
+    try {
+      const analysis = await analyzeStyle(profile, {});
+      setProfile((p) => ({ ...p, styleAnalysis: analysis }));
+    } catch (err) {
+      setAnalyzeError(err.message || "분석에 실패했어요.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   if (!profile?.style) {
     return (
@@ -33,7 +49,17 @@ export default function StyleResult() {
   const scores = profile.scores || {};
 
   async function renderCardPng() {
-    return toPng(cardRef.current, { pixelRatio: 2 });
+    const node = cardRef.current;
+    // 웹폰트가 로딩되기 전에 캡처하면 대체 폰트로 글자 폭이 달라져
+    // 카드 안 텍스트가 겹쳐 보이는 문제가 있어 폰트 로딩을 먼저 기다림.
+    await document.fonts.ready;
+    const rect = node.getBoundingClientRect();
+    return toPng(node, {
+      pixelRatio: 2,
+      width: Math.ceil(rect.width),
+      height: Math.ceil(rect.height),
+      cacheBust: true,
+    });
   }
 
   async function saveImage() {
@@ -89,14 +115,14 @@ export default function StyleResult() {
             >
               {main.icon}
             </div>
-            <div style={{ marginTop: 16, fontSize: 27, fontWeight: 700 }}>{main.title}</div>
+            <div style={{ marginTop: 16, fontSize: 27, fontWeight: 700, whiteSpace: "nowrap" }}>{main.title}</div>
             <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--text-sub)", textAlign: "center" }}>{main.desc}</div>
             <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-              <span style={{ display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999, border: `1px solid var(--type-${main.cssVar})`, color: `var(--type-${main.cssVar})`, fontSize: 12, fontWeight: 600 }}>
+              <span style={{ display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999, border: `1px solid var(--type-${main.cssVar})`, color: `var(--type-${main.cssVar})`, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
                 주 · {profile.style} {main.icon}
               </span>
               {sub && (
-                <span style={{ display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999, border: `1px solid var(--type-${sub.cssVar})`, color: `var(--type-${sub.cssVar})`, fontSize: 12, fontWeight: 600 }}>
+                <span style={{ display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999, border: `1px solid var(--type-${sub.cssVar})`, color: `var(--type-${sub.cssVar})`, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
                   보조 · {profile.style2} {sub.icon}
                 </span>
               )}
@@ -126,6 +152,36 @@ export default function StyleResult() {
                 </div>
               );
             })}
+          </Card>
+
+          <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-sub)" }}>AI 강점·약점 분석</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+              객관식 결과와 <Link to="/friends" style={{ textDecoration: "underline" }}>친구 궁합 메모</Link>를 함께 분석해요.
+              나중에 궁합 매칭에도 참고돼요.
+            </div>
+
+            {profile.styleAnalysis && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--success)" }}>강점</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{profile.styleAnalysis.strengths}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>약점</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{profile.styleAnalysis.weaknesses}</div>
+                </div>
+              </div>
+            )}
+
+            {!canUseAI(profile) ? (
+              <AILimitNotice kakaoUrl={KAKAO_CONTACT_URL} />
+            ) : (
+              <OutlineButton onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "분석 중…" : profile.styleAnalysis ? "다시 분석하기" : "AI로 분석하기"}
+              </OutlineButton>
+            )}
+            {analyzeError && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>{analyzeError}</div>}
           </Card>
 
           <div style={{ display: "flex", gap: 12 }}>

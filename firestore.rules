@@ -12,14 +12,20 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
+    function isMemberOfGroup(groupId) {
+      return signedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+    }
+
     // users/{uid} — 본인만 자기 문서를 쓸 수 있음. 궁합/친구 검색을 위해
     // 로그인한 사용자끼리는 서로 읽을 수 있게 열어둠(이메일/성향 정도만 노출).
-    // 관리자는 다른 유저의 aiUnlimited 필드만 예외적으로 바꿀 수 있음.
+    // 관리자는 다른 유저의 aiUnlimited 필드를 바꾸거나, 계정을 삭제할 수 있음.
     match /users/{uid} {
       allow read: if signedIn();
       allow write: if signedIn() && request.auth.uid == uid;
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiUnlimited']);
+      allow delete: if isAdmin();
     }
 
     // config/gemini — 관리자만 API 키를 읽고 쓸 수 있음 (일반 유저는 접근 불가).
@@ -33,12 +39,13 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid in request.resource.data.memberIds;
     }
 
-    // schedules/{id} — 로그인 사용자는 누구나 만들고 볼 수 있음(소규모 커뮤니티 신뢰 모델).
+    // schedules/{id} — 해당 일정이 속한 모임(그룹)의 멤버만 읽고 쓸 수 있음.
     // 삭제는 주최자만.
     match /schedules/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.hostId == request.auth.uid;
-      allow update: if signedIn();
+      allow read, update: if isMemberOfGroup(resource.data.groupId);
+      allow create: if signedIn() &&
+        request.resource.data.hostId == request.auth.uid &&
+        isMemberOfGroup(request.resource.data.groupId);
       allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
     }
 

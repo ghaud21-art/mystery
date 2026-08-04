@@ -9,6 +9,10 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["icons/favicon-16.png", "icons/favicon-32.png", "icons/apple-touch-icon.png"],
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
+        navigateFallbackDenylist: [/^\/__/],
+      },
       manifest: {
         id: "/",
         name: "머더미스터리",
@@ -25,10 +29,6 @@ export default defineConfig({
           { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
-      },
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
-        navigateFallbackDenylist: [/^\/__/],
       },
     }),
   ],

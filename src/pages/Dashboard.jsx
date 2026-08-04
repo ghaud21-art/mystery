@@ -10,6 +10,7 @@ export default function Dashboard() {
   const { profile } = useAuth();
   const [upcoming, setUpcoming] = useState(null);
   const [records, setRecords] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -17,6 +18,11 @@ export default function Dashboard() {
       try {
         const groupSnap = await getDocs(
           query(collection(db, "groups"), where("memberIds", "array-contains", profile.id))
+        );
+        setAnnouncements(
+          groupSnap.docs
+            .map((d) => ({ groupId: d.id, groupName: d.data().name, announcement: d.data().announcement }))
+            .filter((g) => g.announcement)
         );
         const groupIds = groupSnap.docs.map((d) => d.id).slice(0, 10);
         if (groupIds.length === 0) {
@@ -51,6 +57,22 @@ export default function Dashboard() {
   return (
     <div className="fade-in">
       <PageHeader eyebrow="DETECTIVE OFFICE" title={`안녕하세요, ${displayName(profile)} 님`} />
+
+      {announcements.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+          {announcements.map((a) => (
+            <Link key={a.groupId} to={`/schedule/${a.groupId}`}>
+              <div style={{
+                padding: "14px 18px", borderRadius: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                background: "linear-gradient(135deg, var(--accent-dim), transparent)", border: "1.5px solid var(--accent)",
+              }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)", flex: "none" }}>📢 {a.groupName}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{a.announcement.text}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
 
       {!profile?.style && (
         <Card accent style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -90,8 +112,9 @@ export default function Dashboard() {
         </Card>
 
         <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>커뮤니티 새 글</div>
-          <EmptyState>커뮤니티는 곧 열려요.</EmptyState>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>빠른 이동</div>
+          <Link to="/scenarios"><OutlineButton style={{ width: "100%" }}>🔍 시나리오 찾기</OutlineButton></Link>
+          <Link to="/agenda"><OutlineButton style={{ width: "100%" }}>📅 내 일정 전체 보기</OutlineButton></Link>
         </Card>
       </div>
 

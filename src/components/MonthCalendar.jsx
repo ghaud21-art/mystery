@@ -60,19 +60,26 @@ export default function MonthCalendar({ markedDates = new Set(), onSelectDate, s
               style={{
                 aspectRatio: "1",
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 13,
+                fontWeight: marked ? 700 : 400,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 2,
+                gap: 3,
                 border: isSelected ? "1.5px solid var(--accent)" : isToday ? "1px solid var(--border)" : "1px solid transparent",
-                background: isSelected ? "var(--accent-dim)" : "transparent",
-                color: "var(--text)",
+                background: isSelected ? "var(--accent-dim)" : marked ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
+                color: marked ? "var(--accent)" : "var(--text)",
               }}
             >
               <span>{d}</span>
-              {marked && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent)" }} />}
+              <span style={{
+                width: marked ? 8 : 8,
+                height: 8,
+                borderRadius: "50%",
+                background: marked ? "var(--accent)" : "transparent",
+                boxShadow: marked ? "0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent)" : "none",
+              }} />
             </button>
           );
         })}

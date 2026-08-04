@@ -3,7 +3,8 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { MoonIcon, SunIcon } from "./icons.jsx";
 import { NAV_ITEMS } from "./nav.js";
-import { displayAvatar, displayName } from "../lib/profileDisplay.js";
+import { displayName } from "../lib/profileDisplay.js";
+import Avatar from "./Avatar.jsx";
 import "../styles/shell.css";
 
 export default function AppShell() {
@@ -30,9 +31,7 @@ export default function AppShell() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="avatar">
-            {displayAvatar(profile) || (profile?.photoURL ? <img src={profile.photoURL} alt="" /> : "🔍")}
-          </div>
+          <Avatar profile={profile} size={30} style={{ fontSize: 14 }} />
           <span style={{ fontSize: 12.5, fontWeight: 600 }}>{displayName(profile)}</span>
           <button
             className="sidebar-theme-toggle"

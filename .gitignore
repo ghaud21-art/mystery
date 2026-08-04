@@ -12,3 +12,9 @@ dist/
 # 아이콘 원본 (가공된 결과물은 public/icons/에 보관)
 /머더미스터리 앱 아이콘.png
 /앱 아이콘 배경제거.png
+
+# 시나리오 원본 엑셀 (Firestore로 가져온 뒤에는 git에 안 올림)
+*.xlsx
+
+# Claude Code 내부 상태 파일
+.claude/scheduled_tasks.lock

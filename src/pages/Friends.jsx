@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
-import { compat, compatLabel, TYPE_META } from "../lib/personality.js";
-import { displayAvatar, displayName } from "../lib/profileDisplay.js";
+import { compat, compatLabel } from "../lib/personality.js";
+import { displayName } from "../lib/profileDisplay.js";
+import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function Friends() {
@@ -111,17 +112,11 @@ export default function Friends() {
             const label = score !== null ? compatLabel(score) : null;
             const noteText = profile?.compatNotes?.[f.id]?.text;
             const noteOpen = openNoteFor === f.id;
-            const avatar = displayAvatar(f);
             return (
               <Card key={f.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: "50%", background: "var(--accent-dim)",
-                      border: "1px solid var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
-                    }}>
-                      {avatar || (f.style ? TYPE_META[f.style].icon : "🕵️")}
-                    </div>
+                    <Avatar profile={f} size={40} style={{ fontSize: 18 }} />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{displayName(f)}</div>
                       <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{f.style ?? "성향 미측정"}</div>

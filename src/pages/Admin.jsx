@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
-import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
-import { displayAvatar, displayName } from "../lib/profileDisplay.js";
+import { displayName } from "../lib/profileDisplay.js";
 import { AI_FREE_LIMIT } from "../lib/ai.js";
-import { Card, EmptyState, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import Avatar from "../components/Avatar.jsx";
+import { Card, EmptyState, PageHeader } from "../components/ui.jsx";
 
 export default function Admin() {
   const [users, setUsers] = useState(null);
   const [busyId, setBusyId] = useState(null);
-
-  const [apiKey, setApiKey] = useState("");
-  const [keyLoaded, setKeyLoaded] = useState(false);
-  const [keyStatus, setKeyStatus] = useState("");
 
   const [pendingScenarios, setPendingScenarios] = useState(null);
   const [scenarioBusyId, setScenarioBusyId] = useState(null);
@@ -29,11 +26,6 @@ export default function Admin() {
   useEffect(() => {
     loadUsers();
     loadPendingScenarios();
-    (async () => {
-      const snap = await getDoc(doc(db, "config", "gemini"));
-      if (snap.exists()) setApiKey(snap.data().apiKey || "");
-      setKeyLoaded(true);
-    })();
   }, []);
 
   async function toggleUnlimited(user) {
@@ -44,12 +36,12 @@ export default function Admin() {
     setBusyId(null);
   }
 
-  async function saveKey(e) {
-    e.preventDefault();
-    setKeyStatus("저장 중…");
-    await setDoc(doc(db, "config", "gemini"), { apiKey: apiKey.trim() }, { merge: true });
-    setKeyStatus("저장됨 ✓");
-    setTimeout(() => setKeyStatus(""), 2000);
+  async function deleteUser(user) {
+    if (!window.confirm(`${displayName(user)}(${user.email}) 계정을 정말 삭제할까요? 되돌릴 수 없어요.`)) return;
+    setBusyId(user.id);
+    await deleteDoc(doc(db, "users", user.id));
+    setUsers((list) => list.filter((u) => u.id !== user.id));
+    setBusyId(null);
   }
 
   async function approveScenario(s) {
@@ -70,30 +62,12 @@ export default function Admin() {
     <div className="fade-in">
       <PageHeader eyebrow="ADMIN" title="관리자 페이지" />
 
-      <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>Gemini API 키</div>
+      <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600 }}>Gemini 연동 상태</div>
         <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
-          이 키는 Firestore의 관리자 전용 문서에만 저장돼요. 일반 유저의 AI 사용은 아직 Cloud
-          Functions 연동 전이라 실제로 이 키를 쓰지 않습니다 (연동 전까지는 저장만 해둘 수 있어요).
+          Firebase AI Logic(Gemini Developer API 백엔드)을 사용해서, API 키가 클라이언트에
+          노출되지 않아요. Firebase 콘솔 → Build → AI Logic에서 활성화 여부를 확인할 수 있어요.
         </div>
-        {!keyLoaded ? (
-          <span style={{ fontSize: 12, color: "var(--text-sub)" }}>불러오는 중…</span>
-        ) : (
-          <form onSubmit={saveKey} style={{ display: "flex", gap: 10 }}>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="AIza..."
-              style={{
-                flex: 1, padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)",
-                background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "monospace",
-              }}
-            />
-            <PrimaryButton type="submit" style={{ height: "auto" }}>저장</PrimaryButton>
-          </form>
-        )}
-        {keyStatus && <div style={{ fontSize: 12, color: "var(--success)" }}>{keyStatus}</div>}
       </Card>
 
       <Card style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -109,31 +83,26 @@ export default function Admin() {
             <div
               key={u.id}
               style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "10px 0",
+                display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap",
                 borderBottom: "1px solid var(--border)",
               }}
             >
-              <div style={{
-                width: 34, height: 34, borderRadius: "50%", background: "var(--accent-dim)",
-                border: "1px solid var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flex: "none",
-              }}>
-                {displayAvatar(u) || "🕵️"}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                  {displayName(u)}
-                  {u.isAdmin && <span style={{ fontSize: 10, color: "var(--accent)" }}>ADMIN</span>}
+              <Avatar profile={u} size={34} style={{ fontSize: 15 }} />
+              <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ overflowWrap: "break-word" }}>{displayName(u)}</span>
+                  {u.isAdmin && <span style={{ fontSize: 10, color: "var(--accent)", whiteSpace: "nowrap" }}>ADMIN</span>}
                 </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{u.email}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>{u.email}</div>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-sub)", flex: "none", width: 70, textAlign: "right" }}>
+              <div style={{ fontSize: 11.5, color: "var(--text-sub)", flex: "none", whiteSpace: "nowrap" }}>
                 AI {u.aiUsageCount ?? 0}회
               </div>
               <button
                 onClick={() => toggleUnlimited(u)}
                 disabled={busyId === u.id}
                 style={{
-                  flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600,
+                  flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
                   border: `1px solid ${u.aiUnlimited ? "var(--success)" : "var(--border)"}`,
                   background: u.aiUnlimited ? "var(--success)" : "transparent",
                   color: u.aiUnlimited ? "var(--bg)" : "var(--text-sub)",
@@ -141,6 +110,18 @@ export default function Admin() {
               >
                 무제한 {u.aiUnlimited ? "ON" : "OFF"}
               </button>
+              {!u.isAdmin && (
+                <button
+                  onClick={() => deleteUser(u)}
+                  disabled={busyId === u.id}
+                  style={{
+                    flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
+                    border: "1px solid var(--danger)", background: "transparent", color: "var(--danger)",
+                  }}
+                >
+                  삭제
+                </button>
+              )}
             </div>
           ))
         )}
@@ -156,11 +137,11 @@ export default function Admin() {
           <EmptyState>대기 중인 요청이 없어요.</EmptyState>
         ) : (
           pendingScenarios.map((s) => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                  {[s.publisher, s.playerCount].filter(Boolean).join(" · ") || "추가 정보 없음"} · 요청자 {s.submittedByName}
+            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>
+                  {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ") || "추가 정보 없음"} · 요청자 {s.submittedByName}
                 </div>
               </div>
               <button
