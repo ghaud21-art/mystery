@@ -185,7 +185,14 @@ export default function Records() {
                   <span style={{ fontSize: 11, color: "var(--text-sub)", whiteSpace: "nowrap" }}>평가 안 함</span>
                 )}
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 4 }}>{r.date}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 4 }}>
+                {r.date}
+                {r.source === "auto-schedule" && (
+                  <span style={{ marginLeft: 6, fontSize: 10, color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 999, padding: "1px 6px" }}>
+                    모임 일정 자동 연동
+                  </span>
+                )}
+              </div>
               {r.character && (
                 <div
                   className={r.spoiler && !revealed[r.id] ? "spoiler" : ""}

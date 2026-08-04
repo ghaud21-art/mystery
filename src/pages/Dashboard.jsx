@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
+import { collection, doc, getDocs, limit, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 import { displayName } from "../lib/profileDisplay.js";
 
 export default function Dashboard() {
-  const { profile } = useAuth();
+  const { profile, setProfile } = useAuth();
   const [upcoming, setUpcoming] = useState(null);
   const [records, setRecords] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
+  const [votingId, setVotingId] = useState(null);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -25,6 +26,7 @@ export default function Dashboard() {
             .filter((g) => g.announcement)
         );
         const groupIds = groupSnap.docs.map((d) => d.id).slice(0, 10);
+        const groupNames = Object.fromEntries(groupSnap.docs.map((d) => [d.id, d.data().name]));
         if (groupIds.length === 0) {
           setUpcoming([]);
         } else {
@@ -35,10 +37,17 @@ export default function Dashboard() {
               where("groupId", "in", groupIds),
               where("datetime", ">=", now),
               orderBy("datetime", "asc"),
-              limit(3)
+              limit(20)
             )
           );
-          setUpcoming(schedSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          const items = schedSnap.docs.map((d) => ({ id: d.id, ...d.data(), groupName: groupNames[d.data().groupId] }));
+          // 내가 참석하기로 한 일정을 먼저 보여주고, 날짜순은 그 안에서 유지
+          items.sort((a, b) => {
+            const aMine = a.attendees?.[profile.id] === "yes" ? 0 : 1;
+            const bMine = b.attendees?.[profile.id] === "yes" ? 0 : 1;
+            return aMine !== bMine ? aMine - bMine : a.datetime.localeCompare(b.datetime);
+          });
+          setUpcoming(items.slice(0, 5));
         }
       } catch {
         setUpcoming([]);
@@ -53,6 +62,32 @@ export default function Dashboard() {
       }
     })();
   }, [profile?.id]);
+
+  async function toggleAttend(schedule) {
+    const mine = schedule.attendees?.[profile.id];
+    const next = mine === "yes" ? "no" : "yes";
+    setVotingId(schedule.id);
+    await updateDoc(doc(db, "schedules", schedule.id), { [`attendees.${profile.id}`]: next });
+    setUpcoming((list) =>
+      list
+        .map((s) => (s.id === schedule.id ? { ...s, attendees: { ...s.attendees, [profile.id]: next } } : s))
+        .sort((a, b) => {
+          const aMine = a.attendees?.[profile.id] === "yes" ? 0 : 1;
+          const bMine = b.attendees?.[profile.id] === "yes" ? 0 : 1;
+          return aMine !== bMine ? aMine - bMine : a.datetime.localeCompare(b.datetime);
+        })
+    );
+    if (next === "yes" && schedule.datetime) {
+      const dateKey = schedule.datetime.slice(0, 10);
+      const availableDates = profile.availableDates || [];
+      if (availableDates.includes(dateKey)) {
+        const nextDates = availableDates.filter((d) => d !== dateKey);
+        await updateDoc(doc(db, "users", profile.id), { availableDates: nextDates });
+        setProfile((p) => ({ ...p, availableDates: nextDates }));
+      }
+    }
+    setVotingId(null);
+  }
 
   return (
     <div className="fade-in">
@@ -95,19 +130,27 @@ export default function Dashboard() {
               <Link to="/schedule" style={{ textDecoration: "underline" }}>모임 만들러 가기 →</Link>
             </EmptyState>
           ) : (
-            upcoming.map((s) => (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 17, fontWeight: 700 }}>{s.title}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
-                    {formatDate(s.datetime)} · {s.location}
-                  </div>
+            upcoming.map((s) => {
+              const mine = s.attendees?.[profile.id];
+              return (
+                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <Link to={`/schedule/${s.groupId}`} style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.groupName}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700 }}>{s.title}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
+                      {formatDate(s.datetime)} · {s.location}
+                    </div>
+                  </Link>
+                  <OutlineButton
+                    style={{ height: 38, fontSize: 13, flex: "none", borderColor: mine === "yes" ? "var(--success)" : undefined, color: mine === "yes" ? "var(--success)" : undefined }}
+                    disabled={votingId === s.id}
+                    onClick={() => toggleAttend(s)}
+                  >
+                    {mine === "yes" ? "참석 취소" : "참석하기"}
+                  </OutlineButton>
                 </div>
-                <Link to={`/schedule/${s.groupId}`}>
-                  <OutlineButton style={{ height: 38, fontSize: 13 }}>참석 투표하기</OutlineButton>
-                </Link>
-              </div>
-            ))
+              );
+            })
           )}
         </Card>
 

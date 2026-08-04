@@ -266,6 +266,8 @@ function SchedulesTab({ group, profile, members }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [candidatesFor, setCandidatesFor] = useState(null);
+  const [scenarios, setScenarios] = useState([]);
+  const [showTitleSuggestions, setShowTitleSuggestions] = useState(false);
 
   async function load() {
     try {
@@ -282,6 +284,20 @@ function SchedulesTab({ group, profile, members }) {
   }
 
   useEffect(() => { load(); }, [group.id]);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
+      setScenarios(snap.docs.map((d) => d.data()));
+    })();
+  }, []);
+
+  const titleSuggestions = (() => {
+    if (form.category !== "머더미스터리") return [];
+    const q = form.title.trim().toLowerCase();
+    if (!q) return [];
+    return scenarios.filter((sc) => sc.title.toLowerCase().includes(q)).slice(0, 6);
+  })();
 
   const markedDates = useMemo(() => {
     const set = new Set();
@@ -419,8 +435,39 @@ function SchedulesTab({ group, profile, members }) {
                 </button>
               ))}
             </div>
-            <input required placeholder="이름 (시나리오/테마/게임 등)" value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })} style={inputStyle} />
+            <div style={{ position: "relative" }}>
+              <input
+                required
+                placeholder={form.category === "머더미스터리" ? "이름 (입력하면 시나리오 목록에서 찾아드려요)" : "이름 (테마/게임 등)"}
+                value={form.title}
+                onChange={(e) => { setForm({ ...form, title: e.target.value }); setShowTitleSuggestions(true); }}
+                onFocus={() => setShowTitleSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
+                style={inputStyle}
+              />
+              {showTitleSuggestions && titleSuggestions.length > 0 && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
+                  background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 8,
+                  boxShadow: "0 4px 16px rgba(0,0,0,.15)", overflow: "hidden",
+                }}>
+                  {titleSuggestions.map((sc) => (
+                    <button
+                      type="button"
+                      key={sc.title}
+                      onMouseDown={() => { setForm({ ...form, title: sc.title }); setShowTitleSuggestions(false); }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "9px 14px",
+                        background: "none", border: "none", borderBottom: "1px solid var(--border)", fontSize: 13,
+                      }}
+                    >
+                      {sc.title}
+                      {sc.publisher && <span style={{ color: "var(--text-sub)", fontSize: 11.5 }}> · {sc.publisher}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input required placeholder="장소" value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
 
@@ -492,6 +539,23 @@ function SchedulesTab({ group, profile, members }) {
                   <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>
                     {isNegotiating ? "참여 의향" : "참석"} {yesCount}명
                   </div>
+                  {yesCount > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                      {Object.entries(s.attendees || {})
+                        .filter(([, v]) => v === "yes")
+                        .map(([uid]) => {
+                          const m = members.find((mm) => mm.id === uid);
+                          return (
+                            <span key={uid} style={{
+                              fontSize: 11, padding: "2px 8px", borderRadius: 999,
+                              background: "var(--bg-sub)", color: "var(--text-sub)", whiteSpace: "nowrap",
+                            }}>
+                              {m ? displayName(m) : "탈퇴한 유저"}
+                            </span>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <OutlineButton onClick={() => vote(s, mine)}>

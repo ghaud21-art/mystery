@@ -1,0 +1,19 @@
+name: Sync Attended Records
+
+on:
+  schedule:
+    - cron: "10 0 * * *" # 매일 00:10 UTC = 한국시간(KST) 09:10
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install firebase-admin
+      - run: node scripts/sync-attended-records.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
