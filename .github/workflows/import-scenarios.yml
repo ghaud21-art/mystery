@@ -2,6 +2,15 @@ name: Import Scenarios (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      data_file:
+        description: "scripts/ 안의 JSON 파일명"
+        required: false
+        default: "scenario-data.json"
+      category:
+        description: "offline 또는 online"
+        required: false
+        default: "offline"
 
 jobs:
   import:
@@ -15,3 +24,5 @@ jobs:
       - run: node scripts/import-scenarios.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          DATA_FILE: ${{ inputs.data_file }}
+          CATEGORY: ${{ inputs.category }}

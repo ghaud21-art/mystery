@@ -78,7 +78,7 @@ export default function Agenda() {
       let cursor = new Date(`${start}T00:00:00`);
       const last = new Date(`${end}T00:00:00`);
       while (cursor <= last) {
-        set.add(cursor.toISOString().slice(0, 10));
+        set.add(toDateKey(cursor));
         cursor.setDate(cursor.getDate() + 1);
       }
     });
@@ -154,6 +154,13 @@ export default function Agenda() {
       </Card>
     </div>
   );
+}
+
+function toDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function formatDate(iso) {
