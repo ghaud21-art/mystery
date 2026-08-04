@@ -73,6 +73,12 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
     }
 
+    // personalSchedules/{id} — 모임 없이 혼자 등록하는 개인 머미 일정. 본인만 읽고 쓸 수 있음.
+    match /personalSchedules/{id} {
+      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
     // records/{id} — 본인 기록만 읽고 쓸 수 있음. 커뮤니티 공개 후기는 별도 posts 컬렉션에서 다룸.
     match /records/{id} {
       allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
