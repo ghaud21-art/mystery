@@ -15,14 +15,19 @@ function getAiInstance() {
   return _ai;
 }
 
-// 우선 모델로 시도하고, 모델 자체를 못 찾는 오류일 때만 대체 모델로 재시도.
+// 우선 모델로 시도하고, 모델을 못 찾거나(사용 불가) 일시적인 서버 과부하일 때 대체 모델로 재시도.
+function shouldFallback(err) {
+  return /not found|404|unsupported|invalid model|high demand|overloaded|unavailable|\b(429|500|503)\b/i.test(
+    err?.message || ""
+  );
+}
+
 async function generateWithFallback(prompt) {
   try {
     const model = getGenerativeModel(getAiInstance(), { model: PRIMARY_MODEL });
     return await model.generateContent(prompt);
   } catch (err) {
-    const notFound = /not found|404|unsupported|invalid model/i.test(err?.message || "");
-    if (!notFound) throw err;
+    if (!shouldFallback(err)) throw err;
     const model = getGenerativeModel(getAiInstance(), { model: FALLBACK_MODEL });
     return await model.generateContent(prompt);
   }

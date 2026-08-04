@@ -46,16 +46,18 @@ export default function AppShell() {
       </aside>
 
       <main className="app-main">
-        <Outlet />
-        <div style={{ marginTop: 40, textAlign: "center" }}>
-          <a
-            href={KAKAO_CONTACT_URL}
-            target="_blank"
-            rel="noreferrer"
-            style={{ fontSize: 11, color: "var(--text-sub)", textDecoration: "underline" }}
-          >
-            문의하기
-          </a>
+        <div className="app-main-inner">
+          <Outlet />
+          <div style={{ marginTop: 40, textAlign: "center" }}>
+            <a
+              href={KAKAO_CONTACT_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 11, color: "var(--text-sub)", textDecoration: "underline" }}
+            >
+              문의하기
+            </a>
+          </div>
         </div>
       </main>
 

@@ -115,6 +115,13 @@
   flex: 1;
   min-width: 0;
   padding: 32px 36px 96px;
+  display: flex;
+  justify-content: center;
+}
+
+.app-main-inner {
+  width: 100%;
+  max-width: 1080px;
 }
 
 .tabbar {
