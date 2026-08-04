@@ -780,9 +780,12 @@ function CompatTab({ members }) {
   );
 }
 
+const UNPLAYED_PAGE_SIZE = 10;
+
 function UnplayedTab({ members }) {
   const [scenarios, setScenarios] = useState(null);
   const [results, setResults] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(UNPLAYED_PAGE_SIZE);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -794,6 +797,7 @@ function UnplayedTab({ members }) {
 
   function findUnplayed() {
     setLoading(true);
+    setVisibleCount(UNPLAYED_PAGE_SIZE);
     // records는 본인만 읽을 수 있어서 멤버 기록을 직접 조회할 수 없음 —
     // 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
     const unplayed = scenarios
@@ -823,24 +827,29 @@ function UnplayedTab({ members }) {
           <Card><EmptyState>이 모임은 우리 DB에 있는 시나리오를 전부 해봤어요! 🎉</EmptyState></Card>
         ) : (
           <>
-            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {results.length}개 (가나다순)</div>
-            <ScrollBox maxHeight={480}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {results.map((s) => (
-                  <Card key={s.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                        {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
-                      </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+              총 {results.length}개 중 {Math.min(visibleCount, results.length)}개 표시 (가나다순)
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {results.slice(0, visibleCount).map((s) => (
+                <Card key={s.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                      {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
                     </div>
-                    <Link to="/records" state={{ scenarioName: s.title }}>
-                      <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>+ 기록에 추가</OutlineButton>
-                    </Link>
-                  </Card>
-                ))}
-              </div>
-            </ScrollBox>
+                  </div>
+                  <Link to="/records" state={{ scenarioName: s.title }}>
+                    <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>+ 기록에 추가</OutlineButton>
+                  </Link>
+                </Card>
+              ))}
+              {visibleCount < results.length && (
+                <OutlineButton onClick={() => setVisibleCount((v) => v + UNPLAYED_PAGE_SIZE)}>
+                  더 보기 ({results.length - visibleCount}개 더)
+                </OutlineButton>
+              )}
+            </div>
           </>
         )
       )}

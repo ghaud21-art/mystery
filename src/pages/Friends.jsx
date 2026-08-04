@@ -9,7 +9,9 @@ import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js"
 import { displayName } from "../lib/profileDisplay.js";
 import { normalizeTitle, parsePlayerRange } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
-import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+
+const PAGE_SIZE = 10;
 
 export default function Friends() {
   const { profile, setProfile } = useAuth();
@@ -314,6 +316,7 @@ export default function Friends() {
 function TogetherRecommend({ profile, friends, selectedIds }) {
   const [scenarios, setScenarios] = useState(null);
   const [results, setResults] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -329,6 +332,7 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
   function findRecommendations() {
     setLoading(true);
     setResults(null);
+    setVisibleCount(PAGE_SIZE);
     // records 컬렉션은 본인만 읽을 수 있어서 친구 기록을 직접 조회할 수 없음 —
     // 대신 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
     const people = [profile, ...selectedFriends];
@@ -378,22 +382,27 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
           </EmptyState>
         ) : (
           <>
-            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {results.length}개 (가나다순)</div>
-            <ScrollBox maxHeight={420}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {results.map((s) => (
-                  <div key={s.id} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
-                      {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
-                    </div>
-                    <Link to="/records" state={{ scenarioName: s.title }}>
-                      <OutlineButton style={{ width: "100%", height: 30, fontSize: 11.5, marginTop: 6 }}>+ 기록에 추가</OutlineButton>
-                    </Link>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+              총 {results.length}개 중 {Math.min(visibleCount, results.length)}개 표시 (가나다순)
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {results.slice(0, visibleCount).map((s) => (
+                <div key={s.id} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                    {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
                   </div>
-                ))}
-              </div>
-            </ScrollBox>
+                  <Link to="/records" state={{ scenarioName: s.title }}>
+                    <OutlineButton style={{ width: "100%", height: 30, fontSize: 11.5, marginTop: 6 }}>+ 기록에 추가</OutlineButton>
+                  </Link>
+                </div>
+              ))}
+            </div>
+            {visibleCount < results.length && (
+              <OutlineButton onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}>
+                더 보기 ({results.length - visibleCount}개 더)
+              </OutlineButton>
+            )}
           </>
         )
       )}
