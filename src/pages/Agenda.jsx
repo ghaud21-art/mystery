@@ -64,7 +64,15 @@ export default function Agenda() {
   const markedDates = useMemo(() => {
     const set = new Set();
     (items || []).forEach((s) => {
-      if (s.attendees?.[profile.id] === "yes" && s.datetime) set.add(s.datetime.slice(0, 10));
+      if (s.attendees?.[profile.id] !== "yes" || !s.datetime) return;
+      const start = s.datetime.slice(0, 10);
+      const end = s.endDatetime ? s.endDatetime.slice(0, 10) : start;
+      let cursor = new Date(`${start}T00:00:00`);
+      const last = new Date(`${end}T00:00:00`);
+      while (cursor <= last) {
+        set.add(cursor.toISOString().slice(0, 10));
+        cursor.setDate(cursor.getDate() + 1);
+      }
     });
     return set;
   }, [items, profile?.id]);
@@ -84,12 +92,12 @@ export default function Agenda() {
           <div style={{ fontSize: 13, color: "var(--success)" }}>알림이 켜져 있어요 ✓</div>
         ) : null}
         <OutlineButton onClick={handleEnableNotifications} disabled={notifStatus === "설정 중…"}>
-          {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? "이 기기 알림 토큰 확인" : "일정 전날 알림 받기"}
+          {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? (profile?.isAdmin ? "이 기기 알림 토큰 확인" : "알림 다시 설정") : "일정 전날 알림 받기"}
         </OutlineButton>
         {notifStatus && notifStatus !== "설정 중…" && (
           <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{notifStatus}</div>
         )}
-        {currentToken && (
+        {profile?.isAdmin && currentToken && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
             <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
               이 기기의 FCM 토큰이에요. Firebase 콘솔 → Engage → Messaging → 새 캠페인 →

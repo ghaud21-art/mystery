@@ -1,0 +1,32 @@
+name: Send Test Notification (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      token:
+        description: "테스트 받을 기기의 FCM 토큰"
+        required: true
+      title:
+        description: "알림 제목"
+        required: false
+        default: "테스트 알림"
+      body:
+        description: "알림 본문"
+        required: false
+        default: "머더미스터리 알림 테스트입니다!"
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install firebase-admin
+      - run: node scripts/send-test-notification.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TEST_TOKEN: ${{ inputs.token }}
+          TEST_TITLE: ${{ inputs.title }}
+          TEST_BODY: ${{ inputs.body }}
