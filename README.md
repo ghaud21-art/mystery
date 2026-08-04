@@ -36,20 +36,18 @@ firebase use --add   # 방금 만든 프로젝트 선택 → .firebaserc의 proj
 firebase deploy --only firestore:rules
 ```
 
-### 3. GitHub 저장소 연결
-1. GitHub에서 새 저장소 생성 (Public/Private 무관, 무료)
-2. 이 폴더에서:
-   ```bash
-   git remote add origin https://github.com/<아이디>/<저장소명>.git
-   git push -u origin main
-   ```
-3. 저장소 → Settings → Secrets and variables → Actions 에 아래 값 등록:
-   - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
-     `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`
-     (.env와 동일한 값)
-   - `FIREBASE_SERVICE_ACCOUNT`: Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → "새 비공개 키 생성"으로
-     받은 JSON 파일 전체 내용을 그대로 붙여넣기
-4. main 브랜치에 push하면 `.github/workflows/deploy.yml`이 자동으로 빌드 후 Firebase Hosting에 배포합니다.
+### 3. GitHub 저장소 연결 + 자동배포
+저장소: https://github.com/ghaud21-art/mystery (연결 완료)
+
+Settings → Secrets and variables → Actions 에 아래 값이 등록되어 있어야 합니다:
+- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+  `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`
+  (.env와 동일한 값)
+- `FIREBASE_TOKEN`: `firebase login:ci` 실행 후 나오는 토큰 값
+  (Google 계정 재인증 필요 시 새로 발급받아 갱신)
+
+main 브랜치에 push하면 `.github/workflows/deploy.yml`이 자동으로 빌드 후 `firebase deploy --only hosting`으로
+배포합니다. Actions 탭에서 수동 실행(workflow_dispatch)도 가능합니다.
 
 ### 4. 머더미스터리.com 도메인 연결
 1. Firebase 콘솔 → Hosting → **커스텀 도메인 추가** → `머더미스터리.com` (실제로는 퓨니코드로 자동 변환됨) 입력
