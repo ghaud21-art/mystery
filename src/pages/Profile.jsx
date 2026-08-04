@@ -189,18 +189,22 @@ export default function Profile() {
   );
 }
 
+// 띄어쓰기·특수문자 차이는 무시하고 글자(한글/영문/숫자)만 남겨서 비교.
+// "엔드롤은 흐르지 않아"와 "엔드롤은, 흐르지-않아!"를 같은 작품으로 인식하기 위함.
 function normalizeTitle(t) {
-  return (t || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return (t || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
+
+const REQUEST_CATEGORY_LABEL = { offline: "오프라인", online: "온라인", none: "요청 안 함" };
 
 function BulkRecordImport({ profile }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
   const [parsed, setParsed] = useState(null);
+  const [step, setStep] = useState(1);
   const [selected, setSelected] = useState(new Set());
-  const [requestFlags, setRequestFlags] = useState(new Set());
-  const [requestCategory, setRequestCategory] = useState("offline");
+  const [requestChoice, setRequestChoice] = useState({});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -250,21 +254,16 @@ function BulkRecordImport({ profile }) {
       });
 
       setParsed(withMatch);
+      setStep(withMatch.some((r) => r.matchStatus !== "none") ? 1 : 2);
       setSelected(new Set(withMatch.map((_, i) => i)));
-      setRequestFlags(new Set(withMatch.map((r, i) => (r.matchStatus === "none" ? i : null)).filter((i) => i !== null)));
+      setRequestChoice(
+        Object.fromEntries(withMatch.map((r, i) => [i, r.matchStatus === "none" ? "offline" : "none"]))
+      );
     } catch (err) {
       setError(err.message || "분석에 실패했어요.");
     } finally {
       setAnalyzing(false);
     }
-  }
-
-  function toggleRequest(i) {
-    setRequestFlags((prev) => {
-      const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
-      return next;
-    });
   }
 
   function toggle(i) {
@@ -298,11 +297,11 @@ function BulkRecordImport({ profile }) {
       )
     );
 
-    const requestIndices = indices.filter((i) => parsed[i].matchStatus === "none" && requestFlags.has(i));
+    const requestIndices = indices.filter((i) => parsed[i].matchStatus === "none" && requestChoice[i] !== "none");
     // 같은 배치 안에서 같은 제목을 여러 번 요청하지 않도록 정리
     const seenTitles = new Set();
     const requestItems = requestIndices
-      .map((i) => parsed[i])
+      .map((i) => ({ ...parsed[i], category: requestChoice[i] }))
       .filter((r) => {
         const key = normalizeTitle(r.scenarioName);
         if (seenTitles.has(key)) return false;
@@ -317,7 +316,7 @@ function BulkRecordImport({ profile }) {
           playerCount: "",
           duration: "",
           description: "",
-          category: requestCategory,
+          category: r.category,
           status: "pending",
           submittedBy: profile.id,
           submittedByName: displayName(profile),
@@ -331,6 +330,7 @@ function BulkRecordImport({ profile }) {
         (requestItems.length > 0 ? ` (${requestItems.length}개 작품은 시나리오 등록 요청도 함께 보냈어요)` : "")
     );
     setParsed(null);
+    setStep(1);
     setText("");
     setFileName("");
   }
@@ -390,72 +390,121 @@ function BulkRecordImport({ profile }) {
         parsed.length === 0 ? (
           <div style={{ fontSize: 12.5, color: "var(--text-sub)" }}>인식된 기록이 없어요. 문구를 조금 더 구체적으로 적어보세요.</div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{parsed.length}건 인식됨 · {selected.size}건 선택됨</div>
-
-            {parsed.some((r) => r.matchStatus === "none") && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-sub)" }}>
-                시나리오 DB에 없는 작품은
-                <div style={{ display: "flex", gap: 6 }}>
-                  {[{ key: "offline", label: "오프라인" }, { key: "online", label: "온라인" }].map((t) => (
-                    <button
-                      type="button"
-                      key={t.key}
-                      onClick={() => setRequestCategory(t.key)}
-                      style={{
-                        height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5,
-                        border: `1.5px solid ${requestCategory === t.key ? "var(--accent)" : "var(--border)"}`,
-                        background: requestCategory === t.key ? "var(--accent-dim)" : "transparent",
-                        color: requestCategory === t.key ? "var(--accent)" : "var(--text-sub)",
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                로 등록 요청해요
-              </div>
-            )}
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
-              {parsed.map((r, i) => {
-                const badge = {
-                  approved: { label: "✓ 등록된 시나리오", color: "var(--success)" },
-                  pending: { label: "🕐 이미 등록 요청함", color: "var(--text-sub)" },
-                  none: { label: "＋ 신규 작품", color: "var(--accent)" },
-                }[r.matchStatus];
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
-                    <label style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                      <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} style={{ marginTop: 3 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</span>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: badge.color }}>{badge.label}</span>
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
-                          {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
-                        </div>
-                      </div>
-                    </label>
-                    {r.matchStatus === "none" && selected.has(i) && (
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 24, fontSize: 11, color: "var(--text-sub)" }}>
-                        <input type="checkbox" checked={requestFlags.has(i)} onChange={() => toggleRequest(i)} />
-                        이 작품도 시나리오 DB에 등록 요청하기
-                      </label>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <PrimaryButton onClick={saveSelected} disabled={saving || selected.size === 0}>
-              {saving ? "저장 중…" : `선택한 ${selected.size}건 기록에 추가`}
-            </PrimaryButton>
-          </div>
+          <BulkImportPreview
+            parsed={parsed}
+            step={step}
+            setStep={setStep}
+            selected={selected}
+            toggle={toggle}
+            requestChoice={requestChoice}
+            setRequestChoice={setRequestChoice}
+            saving={saving}
+            onSave={saveSelected}
+          />
         )
       )}
       {saveStatus && <div style={{ fontSize: 12, color: "var(--success)" }}>{saveStatus}</div>}
     </Card>
+  );
+}
+
+function BulkImportPreview({ parsed, step, setStep, selected, toggle, requestChoice, setRequestChoice, saving, onSave }) {
+  const matchedIndices = parsed.map((_, i) => i).filter((i) => parsed[i].matchStatus !== "none");
+  const unmatchedIndices = parsed.map((_, i) => i).filter((i) => parsed[i].matchStatus === "none");
+  const effectiveStep = matchedIndices.length === 0 ? 2 : step;
+
+  const badgeFor = {
+    approved: { label: "✓ 등록된 시나리오", color: "var(--success)" },
+    pending: { label: "🕐 이미 등록 요청함", color: "var(--text-sub)" },
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+        {parsed.length}건 인식됨 · {selected.size}건 선택됨
+        {effectiveStep === 1 ? ` · 1단계: 등록된 작품 (${matchedIndices.length}건)` : ` · 2단계: 신규 작품 등록 요청 (${unmatchedIndices.length}건)`}
+      </div>
+
+      {effectiveStep === 1 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+          {matchedIndices.map((i) => {
+            const r = parsed[i];
+            const badge = badgeFor[r.matchStatus];
+            return (
+              <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} style={{ marginTop: 3 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: badge.color }}>{badge.label}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                    {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+          {unmatchedIndices.map((i) => {
+            const r = parsed[i];
+            return (
+              <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} style={{ marginTop: 3 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>＋ 신규 작품</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                      {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
+                    </div>
+                  </div>
+                </label>
+                {selected.has(i) && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 24 }}>
+                    <span style={{ fontSize: 11, color: "var(--text-sub)" }}>시나리오 DB에도 등록 요청:</span>
+                    {Object.entries(REQUEST_CATEGORY_LABEL).map(([key, label]) => (
+                      <button
+                        type="button"
+                        key={key}
+                        onClick={() => setRequestChoice((prev) => ({ ...prev, [i]: key }))}
+                        style={{
+                          height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11,
+                          border: `1.5px solid ${requestChoice[i] === key ? "var(--accent)" : "var(--border)"}`,
+                          background: requestChoice[i] === key ? "var(--accent-dim)" : "transparent",
+                          color: requestChoice[i] === key ? "var(--accent)" : "var(--text-sub)",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        {effectiveStep === 2 && matchedIndices.length > 0 && (
+          <OutlineButton style={{ flex: "none" }} onClick={() => setStep(1)}>← 이전</OutlineButton>
+        )}
+        {effectiveStep === 1 && unmatchedIndices.length > 0 ? (
+          <PrimaryButton style={{ flex: 1 }} onClick={() => setStep(2)}>
+            다음 (신규 작품 {unmatchedIndices.length}건) →
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton style={{ flex: 1 }} onClick={onSave} disabled={saving || selected.size === 0}>
+            {saving ? "저장 중…" : `선택한 ${selected.size}건 기록에 추가`}
+          </PrimaryButton>
+        )}
+      </div>
+    </div>
   );
 }
 
