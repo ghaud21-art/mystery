@@ -1,6 +1,6 @@
 // 매일 GitHub Actions 크론으로 실행됨 (.github/workflows/sync-attended-records.yml).
-// 날짜가 지난 "머더미스터리" 카테고리 일정 중 참석(yes)한 사람에게 플레이 기록을 자동으로 만들어줌.
-// 한 번 처리한 일정은 recordSynced:true로 표시해 다음 실행에서 건너뜀.
+// 날짜가 지난 "머더미스터리" 카테고리 일정(모임 일정 + 개인 일정) 중 참석/등록한 사람에게
+// 플레이 기록을 자동으로 만들어줌. 한 번 처리한 일정은 recordSynced:true로 표시해 다음 실행에서 건너뜀.
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { normalizeTitle } from "../src/lib/scenarioUtils.js";
@@ -11,18 +11,47 @@ const db = getFirestore();
 
 const now = new Date().toISOString();
 
-const snap = await db.collection("schedules").where("category", "==", "머더미스터리").get();
-const dueSchedules = snap.docs.filter((doc) => {
+async function createRecordIfMissing(uid, title, date) {
+  const existing = await db
+    .collection("records")
+    .where("userId", "==", uid)
+    .where("scenarioName", "==", title)
+    .where("date", "==", date)
+    .limit(1)
+    .get();
+  if (!existing.empty) return false;
+
+  await db.collection("records").add({
+    userId: uid,
+    scenarioName: title,
+    character: "",
+    rating: null,
+    note: "",
+    spoiler: true,
+    favorite: false,
+    date,
+    source: "auto-schedule",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  await db.collection("users").doc(uid).update({
+    playedTitles: FieldValue.arrayUnion(normalizeTitle(title)),
+  });
+  return true;
+}
+
+let created = 0;
+
+// 1) 모임 일정 — 참석(yes)한 멤버들
+const groupSnap = await db.collection("schedules").where("category", "==", "머더미스터리").get();
+const dueGroupSchedules = groupSnap.docs.filter((doc) => {
   const s = doc.data();
   if (s.recordSynced) return false;
   const endsAt = s.endDatetime || s.datetime;
   return !!endsAt && endsAt < now;
 });
+console.log(`모임 일정 처리 대상: ${dueGroupSchedules.length}건`);
 
-console.log(`처리 대상 일정: ${dueSchedules.length}건`);
-
-let created = 0;
-for (const doc of dueSchedules) {
+for (const doc of dueGroupSchedules) {
   const s = doc.data();
   const date = s.datetime.slice(0, 10);
   const attendeeIds = Object.entries(s.attendees || {})
@@ -30,33 +59,25 @@ for (const doc of dueSchedules) {
     .map(([uid]) => uid);
 
   for (const uid of attendeeIds) {
-    const existing = await db
-      .collection("records")
-      .where("userId", "==", uid)
-      .where("scenarioName", "==", s.title)
-      .where("date", "==", date)
-      .limit(1)
-      .get();
-    if (!existing.empty) continue;
-
-    await db.collection("records").add({
-      userId: uid,
-      scenarioName: s.title,
-      character: "",
-      rating: null,
-      note: "",
-      spoiler: true,
-      favorite: false,
-      date,
-      source: "auto-schedule",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    await db.collection("users").doc(uid).update({
-      playedTitles: FieldValue.arrayUnion(normalizeTitle(s.title)),
-    });
-    created++;
+    if (await createRecordIfMissing(uid, s.title, date)) created++;
   }
+  await doc.ref.update({ recordSynced: true });
+}
 
+// 2) 개인 일정 — 등록한 본인
+const personalSnap = await db.collection("personalSchedules").where("category", "==", "머더미스터리").get();
+const duePersonalSchedules = personalSnap.docs.filter((doc) => {
+  const s = doc.data();
+  if (s.recordSynced) return false;
+  const endsAt = s.endDatetime || s.datetime;
+  return !!endsAt && endsAt < now;
+});
+console.log(`개인 일정 처리 대상: ${duePersonalSchedules.length}건`);
+
+for (const doc of duePersonalSchedules) {
+  const s = doc.data();
+  const date = s.datetime.slice(0, 10);
+  if (await createRecordIfMissing(s.userId, s.title, date)) created++;
   await doc.ref.update({ recordSynced: true });
 }
 

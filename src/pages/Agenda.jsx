@@ -81,10 +81,15 @@ export default function Agenda() {
   }, [profile?.id]);
 
   async function loadPersonalSchedules() {
-    const snap = await getDocs(
-      query(collection(db, "personalSchedules"), where("userId", "==", profile.id), orderBy("datetime", "asc"))
-    );
-    setPersonalSchedules(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    try {
+      const snap = await getDocs(
+        query(collection(db, "personalSchedules"), where("userId", "==", profile.id), orderBy("datetime", "asc"))
+      );
+      setPersonalSchedules(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error(err);
+      setPersonalSchedules([]);
+    }
   }
 
   useEffect(() => { if (profile?.id) loadPersonalSchedules(); }, [profile?.id]);
