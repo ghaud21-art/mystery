@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+.firebase/
+*.log
+.DS_Store
+
+# 예전 Apps Script 버전 (샘플 데이터에 평문 비밀번호 포함 — git에 올리지 않음)
+이전 파일/

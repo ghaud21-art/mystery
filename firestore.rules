@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // users/{uid} — 본인만 자기 문서를 쓸 수 있음. 궁합/친구 검색을 위해
+    // 로그인한 사용자끼리는 서로 읽을 수 있게 열어둠(이메일/성향 정도만 노출).
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // schedules/{id} — 로그인 사용자는 누구나 만들고 볼 수 있음(소규모 커뮤니티 신뢰 모델).
+    // 삭제는 주최자만.
+    match /schedules/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.hostId == request.auth.uid;
+      allow update: if signedIn();
+      allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
+    }
+
+    // records/{id} — 본인 기록만 읽고 쓸 수 있음. 커뮤니티 공개 후기는 별도 posts 컬렉션에서 다룸.
+    match /records/{id} {
+      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}

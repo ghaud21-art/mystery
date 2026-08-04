@@ -1,0 +1,123 @@
+/* 머더미스터리 디자인 토큰 — Claude Design 프로젝트에서 추출
+   라이트: 빈티지 서재 / 다크: 탐정 사무소 (기본) */
+
+:root,
+[data-theme="dark"] {
+  --bg: #14141f;
+  --bg-sub: #1a1a2e;
+  --card: #1d1d31;
+  --border: #33314b;
+  --text: #eae4d6;
+  --text-sub: #9b94ae;
+  --accent: #d4a24e;
+  --accent-dim: rgba(212, 162, 78, 0.13);
+  --success: #7fae7a;
+  --danger: #c4483c;
+
+  --type-analysis: #7db3e8;   /* 분석형 🔍 */
+  --type-intuition: #e6c05a;  /* 직관형 ⚡ */
+  --type-emotion: #e39ab5;    /* 감성형 🌸 */
+  --type-logic: #79c7ad;      /* 논리형 📐 */
+  --type-acting: #b49ce2;     /* 연기형 🎭 */
+
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f7f3ed;
+  --bg-sub: #efe7d9;
+  --card: #fffdf7;
+  --border: #e3d7c2;
+  --text: #2c2620;
+  --text-sub: #8b7e6a;
+  --accent: #b45309;
+  --accent-dim: rgba(180, 83, 9, 0.1);
+  --success: #41784f;
+  --danger: #a3352c;
+
+  --type-analysis: #2b6cb0;
+  --type-intuition: #a16a12;
+  --type-emotion: #b83280;
+  --type-logic: #237a5f;
+  --type-acting: #6d4fc4;
+
+  --shadow: 0 2px 12px rgba(92, 60, 24, 0.08);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1,
+h2,
+h3,
+.serif {
+  font-family: "Noto Serif KR", serif;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.spoiler {
+  filter: blur(5px);
+  cursor: pointer;
+  transition: filter 0.25s ease;
+}
+.spoiler:hover,
+.spoiler:focus-visible {
+  filter: none;
+}
+
+.fade-in {
+  animation: fadeUp 0.25s ease;
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
