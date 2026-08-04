@@ -180,7 +180,7 @@ export default function GroupDetail() {
         ))}
       </div>
 
-      {tab === "schedules" && <SchedulesTab group={group} profile={profile} />}
+      {tab === "schedules" && <SchedulesTab group={group} profile={profile} members={members} />}
       {tab === "availability" && <AvailabilityTab members={members} profile={profile} />}
       {tab === "compat" && <CompatTab members={members} />}
       {tab === "unplayed" && <UnplayedTab members={members} />}
@@ -257,13 +257,14 @@ export function AnnouncementBanner({ group, profile }) {
   );
 }
 
-function SchedulesTab({ group, profile }) {
+function SchedulesTab({ group, profile, members }) {
   const { setProfile } = useAuth();
   const [items, setItems] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [candidatesFor, setCandidatesFor] = useState(null);
 
   async function load() {
     try {
@@ -347,6 +348,19 @@ function SchedulesTab({ group, profile }) {
     load();
   }
 
+  function attendeeCandidates(schedule) {
+    const attendeeIds = Object.entries(schedule.attendees || {})
+      .filter(([, v]) => v === "yes")
+      .map(([uid]) => uid);
+    const attendeeMembers = members.filter((m) => attendeeIds.includes(m.id));
+    const counts = {};
+    attendeeMembers.forEach((m) => {
+      (m.availableDates || []).forEach((d) => { counts[d] = (counts[d] || 0) + 1; });
+    });
+    const candidates = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5);
+    return { candidates, total: attendeeMembers.length };
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Card>
@@ -414,34 +428,68 @@ function SchedulesTab({ group, profile }) {
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
           const isHost = s.hostId === profile.id;
+          const candidatesOpen = candidatesFor === s.id;
+          const { candidates, total } = candidatesOpen ? attendeeCandidates(s) : { candidates: [], total: 0 };
           return (
-            <Card key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <div>
-                {s.category && (
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--accent)", background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 999 }}>
-                    {s.category}
-                  </span>
-                )}
-                <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{s.title}</div>
-                <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
-                  {formatDate(s.datetime)}{s.endDatetime && ` ~ ${formatDate(s.endDatetime)}`} · {s.location} · 주최 {s.hostName}
+            <Card key={s.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <div>
+                  {s.category && (
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--accent)", background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 999 }}>
+                      {s.category}
+                    </span>
+                  )}
+                  <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{s.title}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
+                    {formatDate(s.datetime)}{s.endDatetime && ` ~ ${formatDate(s.endDatetime)}`} · {s.location} · 주최 {s.hostName}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참석 {yesCount}명</div>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참석 {yesCount}명</div>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <OutlineButton onClick={() => vote(s, mine)}>
-                  {mine === "yes" ? "참석 취소" : "참석하기"}
-                </OutlineButton>
-                <OutlineButton style={{ height: 44, padding: "0 14px" }} onClick={() => startEdit(s)}>수정</OutlineButton>
-                {isHost && (
-                  <OutlineButton
-                    style={{ height: 44, padding: "0 14px", borderColor: "var(--danger)", color: "var(--danger)" }}
-                    onClick={() => removeSchedule(s.id)}
-                  >
-                    삭제
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <OutlineButton onClick={() => vote(s, mine)}>
+                    {mine === "yes" ? "참석 취소" : "참석하기"}
                   </OutlineButton>
-                )}
+                  <OutlineButton style={{ height: 44, padding: "0 14px" }} onClick={() => startEdit(s)}>수정</OutlineButton>
+                  {isHost && (
+                    <OutlineButton
+                      style={{ height: 44, padding: "0 14px", borderColor: "var(--danger)", color: "var(--danger)" }}
+                      onClick={() => removeSchedule(s.id)}
+                    >
+                      삭제
+                    </OutlineButton>
+                  )}
+                </div>
               </div>
+
+              {yesCount >= 2 && (
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCandidatesFor(candidatesOpen ? null : s.id)}
+                    style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", padding: 0 }}
+                  >
+                    {candidatesOpen ? "참석자 날짜 후보 접기 ▲" : "참석자 기준 날짜 후보 보기 ▼"}
+                  </button>
+                  {candidatesOpen && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                      {candidates.length === 0 ? (
+                        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+                          참석자들이 아직 &ldquo;가능일&rdquo;을 설정하지 않았어요.
+                        </div>
+                      ) : (
+                        candidates.map(([date, count]) => (
+                          <div key={date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDateOnly(date)}</span>
+                            <span style={{ fontSize: 12, color: count === total ? "var(--success)" : "var(--text-sub)" }}>
+                              참석자 {count}/{total}명 가능{count === total ? " · 전원 가능! 🎉" : ""}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </Card>
           );
         })}
