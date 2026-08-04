@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import AppShell from "./components/AppShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import AdminRoute from "./components/AdminRoute.jsx";
 import Landing from "./pages/Landing.jsx";
 import Terms from "./pages/Terms.jsx";
 import Privacy from "./pages/Privacy.jsx";
@@ -10,9 +11,11 @@ import StyleTest from "./pages/StyleTest.jsx";
 import StyleResult from "./pages/StyleResult.jsx";
 import Friends from "./pages/Friends.jsx";
 import Schedule from "./pages/Schedule.jsx";
+import GroupDetail from "./pages/GroupDetail.jsx";
 import Records from "./pages/Records.jsx";
 import Community from "./pages/Community.jsx";
 import Profile from "./pages/Profile.jsx";
+import Admin from "./pages/Admin.jsx";
 
 export default function App() {
   return (
@@ -28,9 +31,13 @@ export default function App() {
             <Route path="/style-result" element={<StyleResult />} />
             <Route path="/friends" element={<Friends />} />
             <Route path="/schedule" element={<Schedule />} />
+            <Route path="/schedule/:groupId" element={<GroupDetail />} />
             <Route path="/records" element={<Records />} />
             <Route path="/community" element={<Community />} />
             <Route path="/profile" element={<Profile />} />
+            <Route element={<AdminRoute />}>
+              <Route path="/admin" element={<Admin />} />
+            </Route>
           </Route>
         </Route>
       </Routes>

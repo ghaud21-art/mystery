@@ -1,103 +1,124 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
+import { Link } from "react-router-dom";
+import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
-import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
-
-const EMPTY_FORM = { title: "", location: "", datetime: "" };
+import { displayAvatar, displayName } from "../lib/profileDisplay.js";
+import { Card, EmptyState, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function Schedule() {
   const { profile } = useAuth();
-  const [items, setItems] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [groups, setGroups] = useState(null);
+  const [friends, setFriends] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [memberIds, setMemberIds] = useState([]);
 
-  async function load() {
-    const snap = await getDocs(query(collection(db, "schedules"), orderBy("datetime", "asc")));
-    setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  async function loadGroups() {
+    const snap = await getDocs(query(collection(db, "groups"), where("memberIds", "array-contains", profile.id)));
+    setGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    if (!profile?.id) return;
+    loadGroups();
+    (async () => {
+      if (!profile?.friends?.length) return;
+      const docs = await Promise.all(profile.friends.map((uid) => getDoc(doc(db, "users", uid))));
+      setFriends(docs.filter((d) => d.exists()).map((d) => ({ id: d.id, ...d.data() })));
+    })();
+  }, [profile?.id, profile?.friends]);
 
-  async function createSchedule(e) {
-    e.preventDefault();
-    await addDoc(collection(db, "schedules"), {
-      ...form,
-      hostId: profile.id,
-      hostName: profile.name,
-      attendees: { [profile.id]: "yes" },
-      createdAt: serverTimestamp(),
-    });
-    setForm(EMPTY_FORM);
-    setShowForm(false);
-    load();
+  function toggleMember(uid) {
+    setMemberIds((ids) => (ids.includes(uid) ? ids.filter((x) => x !== uid) : [...ids, uid]));
   }
 
-  async function vote(scheduleId, current) {
-    const next = current === "yes" ? "no" : "yes";
-    await updateDoc(doc(db, "schedules", scheduleId), { [`attendees.${profile.id}`]: next });
-    load();
+  async function createGroup(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    await addDoc(collection(db, "groups"), {
+      name: name.trim(),
+      memberIds: [profile.id, ...memberIds],
+      hostId: profile.id,
+      hostName: displayName(profile),
+      availability: {},
+      createdAt: serverTimestamp(),
+    });
+    setName("");
+    setMemberIds([]);
+    setShowForm(false);
+    loadGroups();
   }
 
   return (
     <div className="fade-in">
       <PageHeader
         eyebrow="MEETUPS"
-        title="일정 · 모집"
+        title="모임"
         action={<PrimaryButton onClick={() => setShowForm((s) => !s)}>{showForm ? "닫기" : "+ 모임 만들기"}</PrimaryButton>}
       />
 
       {showForm && (
         <Card style={{ marginBottom: 20 }}>
-          <form onSubmit={createSchedule} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input required placeholder="시나리오/모임 이름" value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })} style={inputStyle} />
-            <input required placeholder="장소" value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
-            <input required type="datetime-local" value={form.datetime}
-              onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
-            <PrimaryButton type="submit">등록하기</PrimaryButton>
+          <form onSubmit={createGroup} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input
+              required
+              placeholder="모임 이름 (예: 홍대 탐정단)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={inputStyle}
+            />
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 6 }}>
+                멤버 선택 (친구 중에서)
+              </label>
+              {friends.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+                  먼저 <Link to="/friends" style={{ textDecoration: "underline" }}>친구를 추가</Link>해주세요.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {friends.map((f) => (
+                    <button
+                      type="button"
+                      key={f.id}
+                      onClick={() => toggleMember(f.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, fontSize: 12.5,
+                        border: `1.5px solid ${memberIds.includes(f.id) ? "var(--accent)" : "var(--border)"}`,
+                        background: memberIds.includes(f.id) ? "var(--accent-dim)" : "transparent",
+                        color: memberIds.includes(f.id) ? "var(--accent)" : "var(--text)",
+                      }}
+                    >
+                      {displayAvatar(f) || "🕵️"} {displayName(f)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <PrimaryButton type="submit">모임 만들기</PrimaryButton>
           </form>
         </Card>
       )}
 
-      {items === null ? (
+      {groups === null ? (
         <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
-      ) : items.length === 0 ? (
-        <Card><EmptyState>아직 등록된 일정이 없어요. 첫 모임을 만들어보세요.</EmptyState></Card>
+      ) : groups.length === 0 ? (
+        <Card><EmptyState>아직 모임이 없어요. 친구들과 새 모임을 만들어보세요.</EmptyState></Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {items.map((s) => {
-            const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
-            const mine = s.attendees?.[profile.id];
-            return (
-              <Card key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontSize: 17, fontWeight: 700 }}>{s.title}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
-                    {formatDate(s.datetime)} · {s.location} · 주최 {s.hostName}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참석 {yesCount}명</div>
-                </div>
-                <OutlineButton onClick={() => vote(s.id, mine)}>
-                  {mine === "yes" ? "참석 취소" : "참석하기"}
-                </OutlineButton>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+          {groups.map((g) => (
+            <Link key={g.id} to={`/schedule/${g.id}`}>
+              <Card style={{ display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{g.name}</div>
+                <div style={{ fontSize: 12, color: "var(--text-sub)" }}>멤버 {g.memberIds.length}명</div>
               </Card>
-            );
-          })}
+            </Link>
+          ))}
         </div>
       )}
     </div>
   );
-}
-
-function formatDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("ko-KR", { month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 const inputStyle = {

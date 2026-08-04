@@ -1,0 +1,82 @@
+import { useState } from "react";
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function toKey(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// markedDates: Set<"YYYY-MM-DD"> — highlighted days (e.g. 내가 참석하는 일정)
+export default function MonthCalendar({ markedDates = new Set(), onSelectDate, selectedDate }) {
+  const today = new Date();
+  const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKey = toKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={() => setCursor(new Date(year, month - 1, 1))}
+          style={{ background: "none", border: "none", color: "var(--text-sub)", fontSize: 16, padding: 4 }}
+        >
+          ‹
+        </button>
+        <span style={{ fontSize: 13.5, fontWeight: 700 }}>{year}년 {month + 1}월</span>
+        <button
+          type="button"
+          onClick={() => setCursor(new Date(year, month + 1, 1))}
+          style={{ background: "none", border: "none", color: "var(--text-sub)", fontSize: 16, padding: 4 }}
+        >
+          ›
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+        {WEEKDAYS.map((w) => (
+          <div key={w} style={{ textAlign: "center", fontSize: 10.5, color: "var(--text-sub)", padding: "2px 0" }}>{w}</div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {cells.map((d, i) => {
+          if (d === null) return <div key={`empty-${i}`} />;
+          const key = toKey(year, month, d);
+          const marked = markedDates.has(key);
+          const isToday = key === todayKey;
+          const isSelected = key === selectedDate;
+          return (
+            <button
+              type="button"
+              key={key}
+              onClick={() => onSelectDate?.(key)}
+              style={{
+                aspectRatio: "1",
+                borderRadius: 8,
+                fontSize: 12,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                border: isSelected ? "1.5px solid var(--accent)" : isToday ? "1px solid var(--border)" : "1px solid transparent",
+                background: isSelected ? "var(--accent-dim)" : "transparent",
+                color: "var(--text)",
+              }}
+            >
+              <span>{d}</span>
+              {marked && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent)" }} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

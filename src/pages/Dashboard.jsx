@@ -4,6 +4,7 @@ import { collection, getDocs, limit, orderBy, query, where } from "firebase/fire
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { displayName } from "../lib/profileDisplay.js";
 
 export default function Dashboard() {
   const { profile } = useAuth();
@@ -14,11 +15,25 @@ export default function Dashboard() {
     if (!profile?.id) return;
     (async () => {
       try {
-        const now = new Date().toISOString();
-        const schedSnap = await getDocs(
-          query(collection(db, "schedules"), where("datetime", ">=", now), orderBy("datetime", "asc"), limit(3))
+        const groupSnap = await getDocs(
+          query(collection(db, "groups"), where("memberIds", "array-contains", profile.id))
         );
-        setUpcoming(schedSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const groupIds = groupSnap.docs.map((d) => d.id).slice(0, 10);
+        if (groupIds.length === 0) {
+          setUpcoming([]);
+        } else {
+          const now = new Date().toISOString();
+          const schedSnap = await getDocs(
+            query(
+              collection(db, "schedules"),
+              where("groupId", "in", groupIds),
+              where("datetime", ">=", now),
+              orderBy("datetime", "asc"),
+              limit(3)
+            )
+          );
+          setUpcoming(schedSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        }
       } catch {
         setUpcoming([]);
       }
@@ -35,7 +50,7 @@ export default function Dashboard() {
 
   return (
     <div className="fade-in">
-      <PageHeader eyebrow="DETECTIVE OFFICE" title={`안녕하세요, ${profile?.name ?? ""} 님`} />
+      <PageHeader eyebrow="DETECTIVE OFFICE" title={`안녕하세요, ${displayName(profile)} 님`} />
 
       {!profile?.style && (
         <Card accent style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -53,9 +68,9 @@ export default function Dashboard() {
             <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
           ) : upcoming.length === 0 ? (
             <EmptyState>
-              아직 예정된 모임이 없어요.
+              아직 예정된 일정이 없어요.
               <br />
-              <Link to="/schedule" style={{ textDecoration: "underline" }}>일정 만들러 가기 →</Link>
+              <Link to="/schedule" style={{ textDecoration: "underline" }}>모임 만들러 가기 →</Link>
             </EmptyState>
           ) : (
             upcoming.map((s) => (
@@ -66,7 +81,7 @@ export default function Dashboard() {
                     {s.datetime} · {s.location}
                   </div>
                 </div>
-                <Link to="/schedule">
+                <Link to={`/schedule/${s.groupId}`}>
                   <OutlineButton style={{ height: 38, fontSize: 13 }}>참석 투표하기</OutlineButton>
                 </Link>
               </div>

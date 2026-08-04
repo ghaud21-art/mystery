@@ -1,10 +1,14 @@
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { toPng } from "html-to-image";
 import { useAuth } from "../context/AuthContext.jsx";
 import { SURVEY, TYPE_KEYS, TYPE_META } from "../lib/personality.js";
 import { Badge, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function StyleResult() {
   const { profile } = useAuth();
+  const cardRef = useRef(null);
+  const [busy, setBusy] = useState("");
 
   if (!profile?.style) {
     return (
@@ -28,11 +32,49 @@ export default function StyleResult() {
   const sub = profile.style2 ? TYPE_META[profile.style2] : null;
   const scores = profile.scores || {};
 
+  async function renderCardPng() {
+    return toPng(cardRef.current, { pixelRatio: 2 });
+  }
+
+  async function saveImage() {
+    setBusy("saving");
+    try {
+      const dataUrl = await renderCardPng();
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `머더미스터리_성향카드_${profile.style}.png`;
+      a.click();
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function shareCard() {
+    setBusy("sharing");
+    try {
+      const dataUrl = await renderCardPng();
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], "murder-mystery-style.png", { type: "image/png" });
+      const shareText = `나는 ${main.title}! 머더미스터리에서 내 추리 성향을 확인해보세요 → https://머더미스터리.com`;
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "나의 추리 성향", text: shareText });
+      } else if (navigator.share) {
+        await navigator.share({ title: "나의 추리 성향", text: shareText });
+      } else {
+        await saveImage();
+      }
+    } catch {
+      // 사용자가 공유를 취소한 경우 등은 조용히 무시
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="fade-in">
       <PageHeader title="나의 추리 성향" />
       <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "minmax(280px,400px) 1fr", gap: 24 }}>
-        <div style={{ background: "linear-gradient(165deg,var(--bg-sub),var(--card))", border: "1px solid var(--accent)", borderRadius: 16, padding: 6 }}>
+        <div ref={cardRef} style={{ background: "linear-gradient(165deg,var(--bg-sub),var(--card))", border: "1px solid var(--accent)", borderRadius: 16, padding: 6 }}>
           <div style={{ border: "1px solid var(--border)", borderRadius: 11, padding: "28px 22px", display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div style={{ font: "500 10px ui-monospace,monospace", letterSpacing: 3, color: "var(--text-sub)" }}>
               DETECTIVE PROFILE
@@ -87,7 +129,14 @@ export default function StyleResult() {
           </Card>
 
           <div style={{ display: "flex", gap: 12 }}>
-            <OutlineButton style={{ flex: 1 }}>카드 공유하기</OutlineButton>
+            <OutlineButton style={{ flex: 1 }} disabled={!!busy} onClick={shareCard}>
+              {busy === "sharing" ? "준비 중…" : "공유하기"}
+            </OutlineButton>
+            <OutlineButton style={{ flex: 1 }} disabled={!!busy} onClick={saveImage}>
+              {busy === "saving" ? "저장 중…" : "이미지 저장"}
+            </OutlineButton>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
             <Link to="/friends" style={{ flex: 1 }}>
               <OutlineButton style={{ width: "100%" }}>친구 궁합 보기</OutlineButton>
             </Link>

@@ -5,6 +5,21 @@ import { auth, db, googleProvider } from "../lib/firebase";
 
 const AuthContext = createContext(null);
 
+// 이 이메일로 로그인하면 가입과 동시에 관리자 권한이 부여됨
+const ADMIN_EMAILS = ["ghaud21@gmail.com"];
+
+const DEFAULT_PROFILE_FIELDS = {
+  nickname: null,
+  avatarEmoji: null,
+  style: null,
+  style2: null,
+  friends: [],
+  compatNotes: {},
+  styleAnalysis: null,
+  aiUsageCount: 0,
+  aiUnlimited: false,
+};
+
 async function ensureUserProfile(user) {
   const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
@@ -13,11 +28,21 @@ async function ensureUserProfile(user) {
       name: user.displayName || "이름 없는 탐정",
       email: user.email,
       photoURL: user.photoURL || null,
-      style: null,
-      style2: null,
-      friends: [],
+      isAdmin: ADMIN_EMAILS.includes(user.email),
       createdAt: serverTimestamp(),
+      ...DEFAULT_PROFILE_FIELDS,
     });
+  } else {
+    // 예전 계정에 새 필드가 없으면 기본값으로 채워줌 (기존 값은 덮어쓰지 않음)
+    const data = snap.data();
+    const missing = {};
+    for (const [key, value] of Object.entries(DEFAULT_PROFILE_FIELDS)) {
+      if (!(key in data)) missing[key] = value;
+    }
+    if (!("isAdmin" in data) && ADMIN_EMAILS.includes(user.email)) missing.isAdmin = true;
+    if (Object.keys(missing).length > 0) {
+      await setDoc(ref, missing, { merge: true });
+    }
   }
   const fresh = await getDoc(ref);
   return { id: fresh.id, ...fresh.data() };

@@ -107,3 +107,28 @@ export function EmptyState({ children }) {
     </div>
   );
 }
+
+export function AILimitNotice({ kakaoUrl }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 8, padding: 16,
+      borderRadius: 10, border: "1px solid var(--danger)", background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--danger)" }}>무료 AI 사용 횟수를 모두 썼어요</div>
+      <div style={{ fontSize: 12.5, color: "var(--text-sub)" }}>
+        가입 후 10회까지 무료로 제공돼요. 더 사용하시려면 관리자에게 문의해주세요.
+      </div>
+      <a
+        href={kakaoUrl}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          alignSelf: "flex-start", fontSize: 12.5, fontWeight: 600, color: "var(--accent)",
+          textDecoration: "underline",
+        }}
+      >
+        💬 오픈채팅으로 문의하기
+      </a>
+    </div>
+  );
+}

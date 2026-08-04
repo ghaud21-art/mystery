@@ -7,11 +7,30 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
     // users/{uid} — 본인만 자기 문서를 쓸 수 있음. 궁합/친구 검색을 위해
     // 로그인한 사용자끼리는 서로 읽을 수 있게 열어둠(이메일/성향 정도만 노출).
+    // 관리자는 다른 유저의 aiUnlimited 필드만 예외적으로 바꿀 수 있음.
     match /users/{uid} {
       allow read: if signedIn();
       allow write: if signedIn() && request.auth.uid == uid;
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiUnlimited']);
+    }
+
+    // config/gemini — 관리자만 API 키를 읽고 쓸 수 있음 (일반 유저는 접근 불가).
+    match /config/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // groups/{id} — 모임 멤버만 읽고 쓸 수 있음.
+    match /groups/{id} {
+      allow read, update, delete: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow create: if signedIn() && request.auth.uid in request.resource.data.memberIds;
     }
 
     // schedules/{id} — 로그인 사용자는 누구나 만들고 볼 수 있음(소규모 커뮤니티 신뢰 모델).
@@ -27,6 +46,17 @@ service cloud.firestore {
     match /records/{id} {
       allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // scenarios/{id} — 승인된 시나리오는 누구나 볼 수 있음. 등록 요청은 누구나 만들 수 있고
+    // status는 pending으로 시작, 관리자만 승인/거절(수정) 가능. 본인이 만든 요청은 본인이 삭제 가능.
+    match /scenarios/{id} {
+      allow read: if signedIn() && (resource.data.status == "approved" || isAdmin() || resource.data.submittedBy == request.auth.uid);
+      allow create: if signedIn() &&
+        request.resource.data.submittedBy == request.auth.uid &&
+        request.resource.data.status == "pending";
+      allow update: if isAdmin();
+      allow delete: if signedIn() && (isAdmin() || resource.data.submittedBy == request.auth.uid);
     }
   }
 }
