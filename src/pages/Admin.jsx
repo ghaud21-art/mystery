@@ -211,7 +211,7 @@ export default function Admin() {
         ) : users.length === 0 ? (
           <EmptyState>가입한 유저가 없어요.</EmptyState>
         ) : (
-          <ScrollBox maxHeight={420}>
+          <ScrollBox maxHeight={300}>
           {users.map((u) => (
             <div
               key={u.id}
@@ -270,7 +270,7 @@ export default function Admin() {
         ) : pendingScenarios.length === 0 ? (
           <EmptyState>대기 중인 요청이 없어요.</EmptyState>
         ) : (
-          <ScrollBox maxHeight={420}>
+          <ScrollBox maxHeight={300}>
           {pendingScenarios.map((s) =>
             editingScenarioId === s.id ? (
               renderScenarioForm(s, { showApprove: true })
@@ -331,7 +331,7 @@ export default function Admin() {
               onChange={(e) => setScenarioSearch(e.target.value)}
               style={{ ...scenarioInputStyle, marginBottom: 8 }}
             />
-            <ScrollBox maxHeight={420}>
+            <ScrollBox maxHeight={300}>
               {filteredApprovedScenarios.map((s) =>
                 editingScenarioId === s.id ? (
                   renderScenarioForm(s, { showApprove: false })
