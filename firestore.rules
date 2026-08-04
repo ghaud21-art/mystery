@@ -39,6 +39,19 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
     }
 
+    // friendRequests/{id} — 친구 신청/수락 큐. 보낸 사람과 받은 사람만 읽을 수 있고,
+    // 상태(status) 변경은 받은 사람만 가능(수락/거절). 삭제는 양쪽 다 가능(취소/정리용).
+    match /friendRequests/{id} {
+      allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow create: if signedIn() &&
+        request.resource.data.fromUid == request.auth.uid &&
+        request.resource.data.toUid != request.auth.uid &&
+        request.resource.data.status == "pending";
+      allow update: if signedIn() && resource.data.toUid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+    }
+
     // config/gemini — 관리자만 API 키를 읽고 쓸 수 있음 (일반 유저는 접근 불가).
     match /config/{docId} {
       allow read, write: if isAdmin();

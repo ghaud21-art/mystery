@@ -1,19 +1,24 @@
 import { useEffect, useState } from "react";
-import { arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc } from "firebase/firestore";
+import {
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where,
+} from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayName } from "../lib/profileDisplay.js";
 import Avatar from "../components/Avatar.jsx";
-import { Card, EmptyState, PageHeader } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function Friends() {
   const { profile, setProfile } = useAuth();
   const [friends, setFriends] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [incoming, setIncoming] = useState([]);
+  const [outgoing, setOutgoing] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +38,44 @@ export default function Friends() {
     })();
   }, []);
 
+  async function loadRequests() {
+    if (!profile?.id) return;
+    const [inSnap, outSnap] = await Promise.all([
+      getDocs(query(collection(db, "friendRequests"), where("toUid", "==", profile.id), where("status", "==", "pending"))),
+      getDocs(query(collection(db, "friendRequests"), where("fromUid", "==", profile.id))),
+    ]);
+    const inReqs = inSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const outReqs = outSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const uids = [...new Set([...inReqs.map((r) => r.fromUid), ...outReqs.map((r) => r.toUid)])];
+    const userDocs = await Promise.all(uids.map((uid) => getDoc(doc(db, "users", uid))));
+    const usersById = Object.fromEntries(userDocs.filter((d) => d.exists()).map((d) => [d.id, { id: d.id, ...d.data() }]));
+
+    setIncoming(inReqs.map((r) => ({ ...r, user: usersById[r.fromUid] })).filter((r) => r.user));
+
+    // 내가 보낸 요청이 수락됐으면, 내 친구 목록에도 반영하고 요청 문서는 정리(삭제)
+    const accepted = outReqs.filter((r) => r.status === "accepted");
+    if (accepted.length > 0) {
+      await Promise.all(
+        accepted.map(async (r) => {
+          if (!(profile.friends || []).includes(r.toUid)) {
+            await updateDoc(doc(db, "users", profile.id), { friends: arrayUnion(r.toUid) });
+          }
+          await deleteDoc(doc(db, "friendRequests", r.id));
+        })
+      );
+      setProfile((p) => ({ ...p, friends: [...new Set([...(p.friends || []), ...accepted.map((r) => r.toUid)])] }));
+    }
+    setOutgoing(
+      outReqs
+        .filter((r) => r.status === "pending")
+        .map((r) => ({ ...r, user: usersById[r.toUid] }))
+        .filter((r) => r.user)
+    );
+  }
+
+  useEffect(() => { loadRequests(); }, [profile?.id]);
+
   const suggestions = (() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return [];
@@ -42,13 +85,55 @@ export default function Friends() {
       .slice(0, 6);
   })();
 
-  async function addFriend(target) {
+  function requestStateFor(uid) {
+    if (incoming.some((r) => r.fromUid === uid)) return "incoming";
+    if (outgoing.some((r) => r.toUid === uid)) return "outgoing";
+    return null;
+  }
+
+  async function sendRequest(target) {
     setStatus("");
-    await updateDoc(doc(db, "users", profile.id), { friends: arrayUnion(target.id) });
-    setProfile((p) => ({ ...p, friends: [...(p.friends || []), target.id] }));
+    const reverse = incoming.find((r) => r.fromUid === target.id);
+    if (reverse) {
+      await acceptRequest(reverse);
+      setSearchTerm("");
+      setShowSuggestions(false);
+      return;
+    }
+    if (outgoing.some((r) => r.toUid === target.id)) {
+      setStatus("이미 친구 요청을 보냈어요.");
+      return;
+    }
+    await addDoc(collection(db, "friendRequests"), {
+      fromUid: profile.id, toUid: target.id, status: "pending",
+    });
     setSearchTerm("");
     setShowSuggestions(false);
-    setStatus(`${displayName(target)}님을 친구로 추가했어요.`);
+    setStatus(`${displayName(target)}님에게 친구 요청을 보냈어요.`);
+    loadRequests();
+  }
+
+  async function acceptRequest(req) {
+    setBusyId(req.id);
+    await updateDoc(doc(db, "friendRequests", req.id), { status: "accepted" });
+    await updateDoc(doc(db, "users", profile.id), { friends: arrayUnion(req.fromUid) });
+    setProfile((p) => ({ ...p, friends: [...new Set([...(p.friends || []), req.fromUid])] }));
+    setIncoming((list) => list.filter((r) => r.id !== req.id));
+    setBusyId(null);
+  }
+
+  async function rejectRequest(req) {
+    setBusyId(req.id);
+    await deleteDoc(doc(db, "friendRequests", req.id));
+    setIncoming((list) => list.filter((r) => r.id !== req.id));
+    setBusyId(null);
+  }
+
+  async function cancelRequest(req) {
+    setBusyId(req.id);
+    await deleteDoc(doc(db, "friendRequests", req.id));
+    setOutgoing((list) => list.filter((r) => r.id !== req.id));
+    setBusyId(null);
   }
 
   return (
@@ -79,28 +164,67 @@ export default function Friends() {
                   일치하는 닉네임의 탐정이 없어요.
                 </div>
               ) : (
-                suggestions.map((u) => (
-                  <button
-                    type="button"
-                    key={u.id}
-                    onMouseDown={() => addFriend(u)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-                      padding: "9px 14px", background: "none", border: "none", borderBottom: "1px solid var(--border)",
-                    }}
-                  >
-                    <Avatar profile={u} size={28} style={{ fontSize: 13 }} />
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{displayName(u)}</span>
-                    {u.style && <span style={{ fontSize: 11, color: "var(--text-sub)" }}>{u.style}</span>}
-                    <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--accent)", whiteSpace: "nowrap" }}>+ 추가</span>
-                  </button>
-                ))
+                suggestions.map((u) => {
+                  const reqState = requestStateFor(u.id);
+                  return (
+                    <button
+                      type="button"
+                      key={u.id}
+                      onMouseDown={() => sendRequest(u)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                        padding: "9px 14px", background: "none", border: "none", borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      <Avatar profile={u} size={28} style={{ fontSize: 13 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{displayName(u)}</span>
+                      {u.style && <span style={{ fontSize: 11, color: "var(--text-sub)" }}>{u.style}</span>}
+                      <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--accent)", whiteSpace: "nowrap" }}>
+                        {reqState === "incoming" ? "수락하기" : reqState === "outgoing" ? "요청됨" : "+ 요청"}
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
         </div>
         {status && <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-sub)" }}>{status}</div>}
       </Card>
+
+      {incoming.length > 0 && (
+        <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>받은 친구 요청 ({incoming.length})</div>
+          {incoming.map((r) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Avatar profile={r.user} size={32} style={{ fontSize: 15 }} />
+              <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0 }}>{displayName(r.user)}</span>
+              <PrimaryButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} disabled={busyId === r.id} onClick={() => acceptRequest(r)}>
+                수락
+              </PrimaryButton>
+              <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} disabled={busyId === r.id} onClick={() => rejectRequest(r)}>
+                거절
+              </OutlineButton>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {outgoing.length > 0 && (
+        <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>보낸 친구 요청 ({outgoing.length})</div>
+          {outgoing.map((r) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Avatar profile={r.user} size={32} style={{ fontSize: 15 }} />
+              <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0 }}>{displayName(r.user)}</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>수락 대기 중</span>
+              <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} disabled={busyId === r.id} onClick={() => cancelRequest(r)}>
+                취소
+              </OutlineButton>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {!profile?.style && (
         <Card style={{ marginBottom: 20 }}>
@@ -109,7 +233,7 @@ export default function Friends() {
       )}
 
       {friends.length === 0 ? (
-        <Card><EmptyState>아직 추가한 친구가 없어요.</EmptyState></Card>
+        <Card><EmptyState>아직 친구가 없어요.</EmptyState></Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {friends.map((f) => {
