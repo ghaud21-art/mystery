@@ -100,7 +100,11 @@ export default function StyleTest() {
             rows={4}
             value={subjectiveStep === 0 ? goodMatch : badMatch}
             onChange={(e) => (subjectiveStep === 0 ? setGoodMatch(e.target.value) : setBadMatch(e.target.value))}
-            placeholder="예: 논리적으로 차근차근 설명해주는 사람이랑 잘 맞아요. 대화할 때도 요점부터 말해주는 사람이 편해요."
+            placeholder={
+              subjectiveStep === 0
+                ? "예: 논리적으로 차근차근 설명해주는 사람이랑 잘 맞아요. 대화할 때도 요점부터 말해주는 사람이 편해요."
+                : "예: 너무 급하게 결론부터 내리는 사람이랑은 잘 안 맞아요. 제 얘기를 끝까지 안 듣고 끊는 사람도 힘들어요."
+            }
             style={{
               padding: "12px 14px", borderRadius: 10, border: "1.5px solid var(--border)",
               background: "var(--bg)", color: "var(--text)", fontSize: 14, resize: "vertical",
