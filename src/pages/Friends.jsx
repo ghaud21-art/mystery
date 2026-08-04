@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where,
 } from "firebase/firestore";
@@ -6,8 +7,9 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayName } from "../lib/profileDisplay.js";
+import { parsePlayerRange } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
-import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 export default function Friends() {
   const { profile, setProfile } = useAuth();
@@ -19,6 +21,15 @@ export default function Friends() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [selectedFriendIds, setSelectedFriendIds] = useState(new Set());
+
+  function toggleFriendSelect(id) {
+    setSelectedFriendIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     (async () => {
@@ -235,57 +246,150 @@ export default function Friends() {
       {friends.length === 0 ? (
         <Card><EmptyState>아직 친구가 없어요.</EmptyState></Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {friends.map((f) => {
-            const canCompat = profile?.style && f.style;
-            const result = canCompat ? compatWithReason(profile, f) : null;
-            const label = result ? compatLabel(result.score) : null;
-            const myMeta = profile?.style ? TYPE_META[profile.style] : null;
-            const friendMeta = f.style ? TYPE_META[f.style] : null;
-            return (
-              <Card key={f.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Avatar profile={f} size={40} style={{ fontSize: 18 }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{displayName(f)}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{f.style ?? "성향 미측정"}</div>
-                    </div>
-                  </div>
-                  {result ? (
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ font: "700 20px ui-monospace,monospace", color: "var(--accent)" }}>{result.score}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                        {label.label}{result.bonus > 0 && ` (기본 ${result.base} +${result.bonus})`}
+        <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {friends.map((f) => {
+              const canCompat = profile?.style && f.style;
+              const result = canCompat ? compatWithReason(profile, f) : null;
+              const label = result ? compatLabel(result.score) : null;
+              const myMeta = profile?.style ? TYPE_META[profile.style] : null;
+              const friendMeta = f.style ? TYPE_META[f.style] : null;
+              return (
+                <Card key={f.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedFriendIds.has(f.id)}
+                        onChange={() => toggleFriendSelect(f.id)}
+                        title="함께 안 한 머미 추천에 포함"
+                      />
+                      <Avatar profile={f} size={40} style={{ fontSize: 18 }} />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{displayName(f)}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{f.style ?? "성향 미측정"}</div>
                       </div>
                     </div>
-                  ) : (
-                    <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>성향 미측정</span>
-                  )}
-                </div>
+                    {result ? (
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ font: "700 20px ui-monospace,monospace", color: "var(--accent)" }}>{result.score}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                          {label.label}{result.bonus > 0 && ` (기본 ${result.base} +${result.bonus})`}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>성향 미측정</span>
+                    )}
+                  </div>
 
-                {result && (myMeta || friendMeta) && (
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {myMeta && (
-                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                        나 · 💪 {myMeta.strength} / ⚠️ {myMeta.weakness}
-                      </div>
-                    )}
-                    {friendMeta && (
-                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                        {displayName(f)} · 💪 {friendMeta.strength} / ⚠️ {friendMeta.weakness}
-                      </div>
-                    )}
-                    {result.reasons.map((r, i) => (
-                      <div key={i} style={{ fontSize: 11.5, color: "var(--success)" }}>✓ {r}</div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
+                  {result && (myMeta || friendMeta) && (
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {myMeta && (
+                        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                          나 · 💪 {myMeta.strength} / ⚠️ {myMeta.weakness}
+                        </div>
+                      )}
+                      {friendMeta && (
+                        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                          {displayName(f)} · 💪 {friendMeta.strength} / ⚠️ {friendMeta.weakness}
+                        </div>
+                      )}
+                      {result.reasons.map((r, i) => (
+                        <div key={i} style={{ fontSize: 11.5, color: "var(--success)" }}>✓ {r}</div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+
+          <TogetherRecommend profile={profile} friends={friends} selectedIds={selectedFriendIds} />
         </div>
       )}
     </div>
+  );
+}
+
+function TogetherRecommend({ profile, friends, selectedIds }) {
+  const [scenarios, setScenarios] = useState(null);
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
+      setScenarios(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    })();
+  }, []);
+
+  const selectedFriends = friends.filter((f) => selectedIds.has(f.id));
+  const groupSize = 1 + selectedFriends.length;
+
+  async function findRecommendations() {
+    setLoading(true);
+    setResults(null);
+    const people = [profile, ...selectedFriends];
+    const playedSets = await Promise.all(
+      people.map(async (p) => {
+        const snap = await getDocs(query(collection(db, "records"), where("userId", "==", p.id)));
+        return new Set(snap.docs.map((d) => (d.data().scenarioName || "").trim().toLowerCase()));
+      })
+    );
+    const matched = scenarios
+      .filter((s) => {
+        const range = parsePlayerRange(s.playerCount);
+        if (!range || groupSize < range.min || groupSize > range.max) return false;
+        const key = s.title.trim().toLowerCase();
+        return playedSets.some((set) => !set.has(key));
+      })
+      .sort((a, b) => a.title.localeCompare(b.title, "ko"));
+    setResults(matched);
+    setLoading(false);
+  }
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 20 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 600 }}>함께 안 한 머미 추천</div>
+      {selectedFriends.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+          왼쪽 친구 목록에서 체크박스로 함께 플레이할 친구를 골라주세요. 인원수에 맞고,
+          아직 다 같이 안 해본 작품을 우리 DB에서 찾아드려요.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+            나 + {selectedFriends.map((f) => displayName(f)).join(", ")} · 총 {groupSize}명
+          </div>
+          <PrimaryButton onClick={findRecommendations} disabled={loading || !scenarios}>
+            {loading ? "찾는 중…" : "추천 받기"}
+          </PrimaryButton>
+        </>
+      )}
+      {results !== null && (
+        results.length === 0 ? (
+          <EmptyState>{groupSize}명 인원에 맞고 다 같이 안 해본 작품을 못 찾았어요.</EmptyState>
+        ) : (
+          <>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {results.length}개 (가나다순)</div>
+            <ScrollBox maxHeight={420}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {results.map((s) => (
+                  <div key={s.id} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                      {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
+                    </div>
+                    <Link to="/records" state={{ scenarioName: s.title }}>
+                      <OutlineButton style={{ width: "100%", height: 30, fontSize: 11.5, marginTop: 6 }}>+ 기록에 추가</OutlineButton>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </ScrollBox>
+          </>
+        )
+      )}
+    </Card>
   );
 }
