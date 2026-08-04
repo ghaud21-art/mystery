@@ -9,9 +9,12 @@ import { enableReminderNotifications } from "../lib/notifications.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
+import { PRESET_COLORS } from "../lib/colors.js";
 
 const PERSONAL_CATEGORIES = ["머더미스터리", "방탈출", "보드게임", "기타"];
-const EMPTY_PERSONAL_FORM = { category: PERSONAL_CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "" };
+const EMPTY_PERSONAL_FORM = {
+  category: PERSONAL_CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "", color: PRESET_COLORS[1],
+};
 
 export default function Agenda() {
   const { profile, setProfile } = useAuth();
@@ -64,6 +67,7 @@ export default function Agenda() {
         );
         const groupIds = groupSnap.docs.map((d) => d.id).slice(0, 10);
         const groupNames = Object.fromEntries(groupSnap.docs.map((d) => [d.id, d.data().name]));
+        const groupColors = Object.fromEntries(groupSnap.docs.map((d) => [d.id, d.data().color || PRESET_COLORS[0]]));
         if (groupIds.length === 0) {
           setItems([]);
           return;
@@ -71,7 +75,11 @@ export default function Agenda() {
         const schedSnap = await getDocs(
           query(collection(db, "schedules"), where("groupId", "in", groupIds), orderBy("datetime", "asc"))
         );
-        setItems(schedSnap.docs.map((d) => ({ id: d.id, ...d.data(), groupName: groupNames[d.data().groupId] })));
+        setItems(schedSnap.docs.map((d) => ({
+          id: d.id, ...d.data(),
+          groupName: groupNames[d.data().groupId],
+          groupColor: groupColors[d.data().groupId],
+        })));
       } catch (err) {
         console.error(err);
         setLoadError("일정을 불러오지 못했어요.");
@@ -105,6 +113,7 @@ export default function Agenda() {
     setPersonalForm({
       category: s.category || PERSONAL_CATEGORIES[0], title: s.title || "",
       location: s.location || "", datetime: s.datetime || "", endDatetime: s.endDatetime || "",
+      color: s.color || PRESET_COLORS[1],
     });
     setShowPersonalForm(true);
   }
@@ -160,13 +169,13 @@ export default function Agenda() {
     (items || []).forEach((s) => {
       if (s.attendees?.[profile.id] !== "yes" || !s.datetime) return;
       expandDateRange(s.datetime, s.endDatetime).forEach((k) => {
-        (map[k] = map[k] || []).push({ label: s.title, color: "var(--accent)", type: "group", detail: s });
+        (map[k] = map[k] || []).push({ label: s.title, color: s.groupColor || PRESET_COLORS[0], type: "group", detail: s });
       });
     });
     (personalSchedules || []).forEach((s) => {
       if (!s.datetime) return;
       expandDateRange(s.datetime, s.endDatetime).forEach((k) => {
-        (map[k] = map[k] || []).push({ label: s.title, color: "#8b5cf6", type: "personal", detail: s });
+        (map[k] = map[k] || []).push({ label: s.title, color: s.color || PRESET_COLORS[1], type: "personal", detail: s });
       });
     });
     return map;
@@ -217,15 +226,9 @@ export default function Agenda() {
           selectedDate={selectedDate}
           onSelectDate={(key) => setSelectedDate((d) => (d === key ? null : key))}
         />
-        <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent)", display: "inline-block" }} />
-            모임 일정
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "#8b5cf6", display: "inline-block" }} />
-            개인 일정
-          </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)" }}>
+          모임 일정은 모임 색깔로, 개인 일정은 등록할 때 고른 색으로 표시돼요.
+          모임 색깔은 모임 페이지 "편집"에서 바꿀 수 있어요.
         </div>
 
         {selectedDate && (
@@ -298,6 +301,22 @@ export default function Agenda() {
               <input type="datetime-local" value={personalForm.endDatetime} min={personalForm.datetime}
                 onChange={(e) => setPersonalForm({ ...personalForm, endDatetime: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
             </label>
+            <div>
+              <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginBottom: 6 }}>캘린더 색깔</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setPersonalForm({ ...personalForm, color: c })}
+                    style={{
+                      width: 26, height: 26, borderRadius: "50%", background: c, padding: 0,
+                      border: personalForm.color === c ? "3px solid var(--text)" : "2px solid transparent",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
             <PrimaryButton type="submit" disabled={personalBusy}>
               {personalBusy ? "저장 중…" : editingPersonalId ? "수정 저장" : "등록하기"}
             </PrimaryButton>

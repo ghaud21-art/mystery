@@ -10,6 +10,7 @@ import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js"
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
+import { PRESET_COLORS } from "../lib/colors.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import Avatar from "../components/Avatar.jsx";
@@ -137,6 +138,23 @@ export default function GroupDetail() {
             <OutlineButton style={{ height: 40, borderColor: "var(--danger)", color: "var(--danger)" }} onClick={deleteGroup}>
               모임 삭제
             </OutlineButton>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-sub)", marginBottom: 8 }}>모임 색깔 (캘린더에 표시돼요)</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => updateDoc(doc(db, "groups", group.id), { color: c })}
+                  style={{
+                    width: 28, height: 28, borderRadius: "50%", background: c, padding: 0,
+                    border: (group.color || PRESET_COLORS[0]) === c ? "3px solid var(--text)" : "2px solid transparent",
+                  }}
+                />
+              ))}
+            </div>
           </div>
 
           <div>
