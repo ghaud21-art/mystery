@@ -100,7 +100,7 @@ export default function Dashboard() {
                 <div>
                   <div style={{ fontSize: 17, fontWeight: 700 }}>{s.title}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
-                    {s.datetime} · {s.location}
+                    {formatDate(s.datetime)} · {s.location}
                   </div>
                 </div>
                 <Link to={`/schedule/${s.groupId}`}>
@@ -141,4 +141,11 @@ export default function Dashboard() {
       </Card>
     </div>
   );
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
 }

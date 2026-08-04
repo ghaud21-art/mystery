@@ -6,7 +6,8 @@ import { AI_FREE_LIMIT } from "../lib/ai.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, PageHeader, ScrollBox } from "../components/ui.jsx";
 
-const SCENARIO_EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "" };
+const SCENARIO_EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline" };
+const CATEGORY_LABEL = { offline: "오프라인", online: "온라인" };
 
 export default function Admin() {
   const [users, setUsers] = useState(null);
@@ -47,7 +48,7 @@ export default function Admin() {
     setEditingScenarioId(s.id);
     setScenarioForm({
       title: s.title || "", publisher: s.publisher || "", playerCount: s.playerCount || "",
-      duration: s.duration || "", description: s.description || "",
+      duration: s.duration || "", description: s.description || "", category: s.category || "offline",
     });
   }
 
@@ -193,7 +194,12 @@ export default function Admin() {
           {pendingScenarios.map((s) => (
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
               <div style={{ flex: "1 1 160px", minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 999, padding: "1px 7px" }}>
+                    {CATEGORY_LABEL[s.category || "offline"]}
+                  </span>
+                  {s.title}
+                </div>
                 <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>
                   {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ") || "추가 정보 없음"} · 요청자 {s.submittedByName}
                 </div>
@@ -242,6 +248,23 @@ export default function Admin() {
                     onSubmit={saveScenario}
                     style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0", borderBottom: "1px solid var(--border)" }}
                   >
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
+                        <button
+                          type="button"
+                          key={key}
+                          onClick={() => setScenarioForm({ ...scenarioForm, category: key })}
+                          style={{
+                            flex: 1, height: 30, borderRadius: 8, fontSize: 11.5, fontWeight: 600,
+                            border: `1.5px solid ${scenarioForm.category === key ? "var(--accent)" : "var(--border)"}`,
+                            background: scenarioForm.category === key ? "var(--accent-dim)" : "transparent",
+                            color: scenarioForm.category === key ? "var(--accent)" : "var(--text-sub)",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                     <input required placeholder="시나리오 이름" value={scenarioForm.title}
                       onChange={(e) => setScenarioForm({ ...scenarioForm, title: e.target.value })} style={scenarioInputStyle} />
                     <input placeholder="제작사" value={scenarioForm.publisher}
@@ -274,7 +297,12 @@ export default function Admin() {
                 ) : (
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ flex: "1 1 160px", minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 999, padding: "1px 7px" }}>
+                          {CATEGORY_LABEL[s.category || "offline"]}
+                        </span>
+                        {s.title}
+                      </div>
                       <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>
                         {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ") || "추가 정보 없음"}
                       </div>

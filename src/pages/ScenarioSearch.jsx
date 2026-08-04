@@ -6,11 +6,16 @@ import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
-const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "" };
+const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline" };
+const CATEGORY_TABS = [
+  { key: "offline", label: "오프라인" },
+  { key: "online", label: "온라인" },
+];
 
 export default function ScenarioSearch() {
   const { profile } = useAuth();
   const [scenarios, setScenarios] = useState(null);
+  const [category, setCategory] = useState("offline");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -26,11 +31,11 @@ export default function ScenarioSearch() {
   const filtered = useMemo(() => {
     if (!scenarios) return [];
     const q = search.trim().toLowerCase();
-    const list = q
-      ? scenarios.filter((s) => s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q))
-      : scenarios;
+    const list = scenarios
+      .filter((s) => (s.category || "offline") === category)
+      .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
     return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search]);
+  }, [scenarios, search, category]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -41,7 +46,7 @@ export default function ScenarioSearch() {
       submittedBy: profile.id,
       submittedByName: displayName(profile),
     });
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, category });
     setShowForm(false);
     setSubmitStatus("관리자 승인 후 목록에 추가돼요. 요청 감사해요!");
     setTimeout(() => setSubmitStatus(""), 4000);
@@ -54,9 +59,33 @@ export default function ScenarioSearch() {
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div style={{ fontSize: 14, fontWeight: 700 }}>머더미스터리 시나리오 검색</div>
-          <PrimaryButton style={{ height: 36, padding: "0 14px", fontSize: 12.5, whiteSpace: "nowrap" }} onClick={() => setShowForm((s) => !s)}>
+          <PrimaryButton
+            style={{ height: 36, padding: "0 14px", fontSize: 12.5, whiteSpace: "nowrap" }}
+            onClick={() => {
+              if (!showForm) setForm({ ...EMPTY_FORM, category });
+              setShowForm((s) => !s);
+            }}
+          >
             {showForm ? "닫기" : "+ 목록에 없는 작품 등록 요청"}
           </PrimaryButton>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          {CATEGORY_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setCategory(t.key)}
+              style={{
+                flex: 1, height: 36, borderRadius: 8, fontSize: 13, fontWeight: 600,
+                border: `1.5px solid ${category === t.key ? "var(--accent)" : "var(--border)"}`,
+                background: category === t.key ? "var(--accent-dim)" : "transparent",
+                color: category === t.key ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         <input
@@ -68,6 +97,23 @@ export default function ScenarioSearch() {
 
         {showForm && (
           <form onSubmit={submitRequest} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 10, background: "var(--bg-sub)" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {CATEGORY_TABS.map((t) => (
+                <button
+                  type="button"
+                  key={t.key}
+                  onClick={() => setForm({ ...form, category: t.key })}
+                  style={{
+                    flex: 1, height: 34, borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                    border: `1.5px solid ${form.category === t.key ? "var(--accent)" : "var(--border)"}`,
+                    background: form.category === t.key ? "var(--accent-dim)" : "transparent",
+                    color: form.category === t.key ? "var(--accent)" : "var(--text-sub)",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
             <input required placeholder="시나리오 이름" value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })} style={inputStyle} />
             <input placeholder="제작사 (선택)" value={form.publisher}

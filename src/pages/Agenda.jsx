@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
+import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { enableReminderNotifications } from "../lib/notifications.js";
@@ -12,8 +12,7 @@ export default function Agenda() {
   const [items, setItems] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [notifStatus, setNotifStatus] = useState("");
-  const [currentToken, setCurrentToken] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
+  const [testStatus, setTestStatus] = useState("");
 
   const notifEnabled = (profile?.fcmTokens?.length || 0) > 0;
 
@@ -21,7 +20,6 @@ export default function Agenda() {
     setNotifStatus("설정 중…");
     try {
       const token = await enableReminderNotifications(profile.id);
-      setCurrentToken(token);
       setProfile((p) => ({ ...p, fcmTokens: [...new Set([...(p.fcmTokens || []), token])] }));
       setNotifStatus("알림이 켜졌어요 ✓");
     } catch (err) {
@@ -29,10 +27,20 @@ export default function Agenda() {
     }
   }
 
-  async function copyToken() {
-    await navigator.clipboard.writeText(currentToken);
-    setCopyStatus("복사됐어요!");
-    setTimeout(() => setCopyStatus(""), 2000);
+  async function sendTestNotification() {
+    setTestStatus("요청 중…");
+    try {
+      const token = await enableReminderNotifications(profile.id);
+      await addDoc(collection(db, "testNotifications"), {
+        uid: profile.id,
+        token,
+        status: "pending",
+        requestedAt: serverTimestamp(),
+      });
+      setTestStatus("요청했어요! 최대 5분 안에 이 기기로 알림이 도착해요.");
+    } catch (err) {
+      setTestStatus(err.message || "요청에 실패했어요.");
+    }
   }
 
   useEffect(() => {
@@ -88,33 +96,22 @@ export default function Agenda() {
 
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 13.5, fontWeight: 600 }}>일정 전날 알림</div>
-        {notifEnabled && !currentToken ? (
-          <div style={{ fontSize: 13, color: "var(--success)" }}>알림이 켜져 있어요 ✓</div>
-        ) : null}
-        <OutlineButton onClick={handleEnableNotifications} disabled={notifStatus === "설정 중…"}>
-          {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? (profile?.isAdmin ? "이 기기 알림 토큰 확인" : "알림 다시 설정") : "일정 전날 알림 받기"}
-        </OutlineButton>
+        {notifEnabled && <div style={{ fontSize: 13, color: "var(--success)" }}>알림이 켜져 있어요 ✓</div>}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <OutlineButton style={{ flex: "1 1 160px" }} onClick={handleEnableNotifications} disabled={notifStatus === "설정 중…"}>
+            {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? "알림 다시 설정" : "일정 전날 알림 받기"}
+          </OutlineButton>
+          {notifEnabled && (
+            <OutlineButton style={{ flex: "1 1 160px" }} onClick={sendTestNotification} disabled={testStatus === "요청 중…"}>
+              {testStatus === "요청 중…" ? "요청 중…" : "테스트 알림 보내기"}
+            </OutlineButton>
+          )}
+        </div>
         {notifStatus && notifStatus !== "설정 중…" && (
           <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{notifStatus}</div>
         )}
-        {profile?.isAdmin && currentToken && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
-            <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
-              이 기기의 FCM 토큰이에요. Firebase 콘솔 → Engage → Messaging → 새 캠페인 →
-              &ldquo;테스트 메시지 전송&rdquo;에 붙여넣으면 이 기기로 알림을 테스트할 수 있어요.
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <div style={{
-                flex: 1, minWidth: 0, fontSize: 10.5, fontFamily: "ui-monospace,monospace", overflowWrap: "break-word",
-                background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px",
-              }}>
-                {currentToken}
-              </div>
-              <OutlineButton style={{ flex: "none", height: 30, padding: "0 12px", fontSize: 11.5 }} onClick={copyToken}>
-                {copyStatus || "복사"}
-              </OutlineButton>
-            </div>
-          </div>
+        {testStatus && testStatus !== "요청 중…" && (
+          <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{testStatus}</div>
         )}
       </Card>
 
@@ -163,5 +160,5 @@ function formatDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("ko-KR", { month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
 }

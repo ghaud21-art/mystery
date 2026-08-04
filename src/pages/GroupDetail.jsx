@@ -656,12 +656,12 @@ function formatDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("ko-KR", { month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function formatDateOnly(key) {
   const d = new Date(key + "T00:00:00");
-  return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+  return d.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
 }
 
 function Fld({ label, children }) {
