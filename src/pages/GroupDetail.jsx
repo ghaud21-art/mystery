@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
-import { compat, compatLabel, TYPE_META } from "../lib/personality.js";
+import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
@@ -631,13 +631,15 @@ function AvailabilityTab({ members, profile }) {
 }
 
 function CompatTab({ members }) {
+  const [openPair, setOpenPair] = useState(null);
+
   const pairs = useMemo(() => {
     const list = [];
     for (let i = 0; i < members.length; i++) {
       for (let j = i + 1; j < members.length; j++) {
         const a = members[i], b = members[j];
         if (!a.style || !b.style) continue;
-        list.push({ a, b, score: compat(a.style, b.style) });
+        list.push({ a, b, ...compatWithReason(a, b) });
       }
     }
     return list.sort((x, y) => y.score - x.score);
@@ -665,19 +667,42 @@ function CompatTab({ members }) {
         <Card><EmptyState>궁합을 보려면 멤버들이 먼저 성향 테스트를 완료해야 해요.</EmptyState></Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {pairs.map(({ a, b, score }) => {
+          {pairs.map(({ a, b, score, base, bonus, reasons }) => {
             const label = compatLabel(score);
+            const pairKey = `${a.id}-${b.id}`;
+            const open = openPair === pairKey;
             return (
-              <Card key={`${a.id}-${b.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                  <span>{displayAvatar(a) || TYPE_META[a.style].icon} {displayName(a)}</span>
-                  <span style={{ color: "var(--text-sub)" }}>×</span>
-                  <span>{displayAvatar(b) || TYPE_META[b.style].icon} {displayName(b)}</span>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ font: "700 18px ui-monospace,monospace", color: "var(--accent)" }}>{score}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-sub)" }}>{label.label}</div>
-                </div>
+              <Card key={pairKey} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setOpenPair(open ? null : pairKey)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", padding: 0, width: "100%" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <span>{displayAvatar(a) || TYPE_META[a.style].icon} {displayName(a)}</span>
+                    <span style={{ color: "var(--text-sub)" }}>×</span>
+                    <span>{displayAvatar(b) || TYPE_META[b.style].icon} {displayName(b)}</span>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ font: "700 18px ui-monospace,monospace", color: "var(--accent)" }}>{score}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                      {label.label}{bonus > 0 && ` (기본 ${base} +${bonus})`}
+                    </div>
+                  </div>
+                </button>
+                {open && (
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                      {displayName(a)} · 💪 {TYPE_META[a.style].strength} / ⚠️ {TYPE_META[a.style].weakness}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                      {displayName(b)} · 💪 {TYPE_META[b.style].strength} / ⚠️ {TYPE_META[b.style].weakness}
+                    </div>
+                    {reasons.map((r, i) => (
+                      <div key={i} style={{ fontSize: 11.5, color: "var(--success)" }}>✓ {r}</div>
+                    ))}
+                  </div>
+                )}
               </Card>
             );
           })}

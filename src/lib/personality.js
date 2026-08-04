@@ -103,6 +103,34 @@ export function compat(a, b) {
   return COMPAT_SCORES[`${a}-${b}`] ?? COMPAT_SCORES[`${b}-${a}`] ?? 70;
 }
 
+// AI 강점·약점 분석 문장에서 겹치는 주제 키워드가 있으면 "약점을 강점이 보완한다"고 보고 보너스를 줌.
+const SYNERGY_KEYWORDS = ["논리", "직관", "감정", "팀", "연기", "판단", "설명", "유연", "정리", "몰입", "분위기", "블러핑", "객관"];
+const SYNERGY_BONUS = 5;
+
+function synergyBonus(weaknessText, strengthText) {
+  if (!weaknessText || !strengthText) return false;
+  return SYNERGY_KEYWORDS.some((k) => weaknessText.includes(k) && strengthText.includes(k));
+}
+
+// 주 성향 조합 기본 점수에, 두 사람이 AI 강점·약점 분석을 완료했다면 서로의 약점을
+// 상대 강점이 보완하는지 확인해서 보너스를 더함. 점수와 함께 "왜 이 점수인지" 이유도 반환.
+export function compatWithReason(a, b) {
+  const base = compat(a.style, b.style);
+  const reasons = [];
+  let bonus = 0;
+
+  if (synergyBonus(a.styleAnalysis?.weaknesses, b.styleAnalysis?.strengths)) {
+    bonus += SYNERGY_BONUS;
+    reasons.push("나의 약점을 상대방의 강점이 보완해줘요");
+  }
+  if (synergyBonus(b.styleAnalysis?.weaknesses, a.styleAnalysis?.strengths)) {
+    bonus += SYNERGY_BONUS;
+    reasons.push("상대방의 약점을 내가 보완해줘요");
+  }
+
+  return { base, bonus, score: Math.min(99, base + bonus), reasons };
+}
+
 export function compatLabel(score) {
   if (score >= 90) return { label: "환상의 콤비 ✨", tone: "success" };
   if (score >= 80) return { label: "좋은 호흡 👍", tone: "info" };

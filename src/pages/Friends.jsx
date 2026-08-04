@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
-import { compat, compatLabel } from "../lib/personality.js";
+import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayName } from "../lib/profileDisplay.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, PageHeader } from "../components/ui.jsx";
@@ -113,10 +113,13 @@ export default function Friends() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {friends.map((f) => {
-            const score = profile?.style && f.style ? compat(profile.style, f.style) : null;
-            const label = score !== null ? compatLabel(score) : null;
+            const canCompat = profile?.style && f.style;
+            const result = canCompat ? compatWithReason(profile, f) : null;
+            const label = result ? compatLabel(result.score) : null;
+            const myMeta = profile?.style ? TYPE_META[profile.style] : null;
+            const friendMeta = f.style ? TYPE_META[f.style] : null;
             return (
-              <Card key={f.id}>
+              <Card key={f.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <Avatar profile={f} size={40} style={{ fontSize: 18 }} />
@@ -125,15 +128,35 @@ export default function Friends() {
                       <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{f.style ?? "성향 미측정"}</div>
                     </div>
                   </div>
-                  {score !== null ? (
+                  {result ? (
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ font: "700 20px ui-monospace,monospace", color: "var(--accent)" }}>{score}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{label.label}</div>
+                      <div style={{ font: "700 20px ui-monospace,monospace", color: "var(--accent)" }}>{result.score}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                        {label.label}{result.bonus > 0 && ` (기본 ${result.base} +${result.bonus})`}
+                      </div>
                     </div>
                   ) : (
                     <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>성향 미측정</span>
                   )}
                 </div>
+
+                {result && (myMeta || friendMeta) && (
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {myMeta && (
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                        나 · 💪 {myMeta.strength} / ⚠️ {myMeta.weakness}
+                      </div>
+                    )}
+                    {friendMeta && (
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                        {displayName(f)} · 💪 {friendMeta.strength} / ⚠️ {friendMeta.weakness}
+                      </div>
+                    )}
+                    {result.reasons.map((r, i) => (
+                      <div key={i} style={{ fontSize: 11.5, color: "var(--success)" }}>✓ {r}</div>
+                    ))}
+                  </div>
+                )}
               </Card>
             );
           })}
