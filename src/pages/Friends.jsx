@@ -23,6 +23,7 @@ export default function Friends() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [expandedFriendId, setExpandedFriendId] = useState(null);
   const [selectedFriendIds, setSelectedFriendIds] = useState(new Set());
 
   function toggleFriendSelect(id) {
@@ -268,7 +269,16 @@ export default function Friends() {
                       />
                       <Avatar profile={f} size={40} style={{ fontSize: 18 }} />
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{displayName(f)}</div>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedFriendId((id) => (id === f.id ? null : f.id))}
+                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+                        >
+                          <div style={{ fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 4 }}>
+                            {displayName(f)}
+                            <span style={{ fontSize: 10, color: "var(--text-sub)" }}>{expandedFriendId === f.id ? "▲" : "▾"}</span>
+                          </div>
+                        </button>
                         <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{f.style ?? "성향 미측정"}</div>
                       </div>
                     </div>
@@ -283,6 +293,17 @@ export default function Friends() {
                       <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>성향 미측정</span>
                     )}
                   </div>
+
+                  {expandedFriendId === f.id && (
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ fontSize: 12.5 }}>
+                        <span style={{ fontWeight: 700, color: "var(--accent)" }}>PLAYED</span> · {f.playedCount ?? f.playedTitles?.length ?? 0}편
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+                        ⭐ 인생머미: {f.favoriteTitles?.length > 0 ? f.favoriteTitles.join(", ") : "아직 없어요"}
+                      </div>
+                    </div>
+                  )}
 
                   {result && (myMeta || friendMeta) && (
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>

@@ -20,6 +20,8 @@ const DEFAULT_PROFILE_FIELDS = {
   availableDates: [],
   playedTitles: [],
   wishlist: [],
+  favoriteTitles: [],
+  playedCount: 0,
 };
 
 async function ensureUserProfile(user) {
