@@ -316,6 +316,7 @@ export default function Friends() {
 function TogetherRecommend({ profile, friends, selectedIds }) {
   const [scenarios, setScenarios] = useState(null);
   const [results, setResults] = useState(null);
+  const [usedWishlist, setUsedWishlist] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
 
@@ -337,17 +338,24 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
     // 대신 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
     const people = [profile, ...selectedFriends];
     const wishlist = profile.wishlist || [];
-    const matched = scenarios
+    const eligible = scenarios
       .filter((s) => {
         const range = parsePlayerRange(s.playerCount);
         if (!range || groupSize < range.min || groupSize > range.max) return false;
         const key = normalizeTitle(s.title);
-        const notPlayed = people.every((p) => !(p.playedTitles || []).includes(key));
-        if (!notPlayed) return false;
-        return wishlist.length > 0 ? wishlist.includes(s.id) : true;
+        return people.every((p) => !(p.playedTitles || []).includes(key));
       })
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
-    setResults(matched);
+
+    // 위시리스트가 있으면 그 안에서 먼저 찾고, 맞는 게 하나도 없으면 전체 안 한 작품으로 대체
+    const wishlistMatched = wishlist.length > 0 ? eligible.filter((s) => wishlist.includes(s.id)) : [];
+    if (wishlist.length > 0 && wishlistMatched.length > 0) {
+      setResults(wishlistMatched);
+      setUsedWishlist(true);
+    } else {
+      setResults(eligible);
+      setUsedWishlist(false);
+    }
     setLoading(false);
   }
 
@@ -366,7 +374,7 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
           </div>
           <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
             {(profile.wishlist || []).length > 0
-              ? "찾기 탭에서 하트 찍어둔 위시리스트 안에서 추천해요."
+              ? "위시리스트 안에서 먼저 찾고, 맞는 게 없으면 안 해본 작품 전체에서 추천해요."
               : "위시리스트가 비어있어서, 아직 안 해본 작품 전체에서 추천해요."}
           </div>
           <PrimaryButton onClick={findRecommendations} disabled={loading || !scenarios}>
@@ -376,13 +384,11 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
       )}
       {results !== null && (
         results.length === 0 ? (
-          <EmptyState>
-            {groupSize}명 인원에 맞고 다 같이 안 해본 작품을 못 찾았어요.
-            {(profile.wishlist || []).length > 0 && " (위시리스트 안에서는 없어요)"}
-          </EmptyState>
+          <EmptyState>{groupSize}명 인원에 맞고 다 같이 안 해본 작품을 못 찾았어요.</EmptyState>
         ) : (
           <>
             <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+              {usedWishlist ? "♥ 위시리스트 안에서 찾았어요 · " : ""}
               총 {results.length}개 중 {Math.min(visibleCount, results.length)}개 표시 (가나다순)
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
