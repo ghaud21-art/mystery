@@ -316,7 +316,6 @@ export default function Friends() {
 function TogetherRecommend({ profile, friends, selectedIds }) {
   const [scenarios, setScenarios] = useState(null);
   const [results, setResults] = useState(null);
-  const [usedWishlist, setUsedWishlist] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
 
@@ -337,25 +336,25 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
     // records 컬렉션은 본인만 읽을 수 있어서 친구 기록을 직접 조회할 수 없음 —
     // 대신 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
     const people = [profile, ...selectedFriends];
-    const wishlist = profile.wishlist || [];
-    const eligible = scenarios
-      .filter((s) => {
-        const range = parsePlayerRange(s.playerCount);
-        if (!range || groupSize < range.min || groupSize > range.max) return false;
-        const key = normalizeTitle(s.title);
-        return people.every((p) => !(p.playedTitles || []).includes(key));
-      })
-      .sort((a, b) => a.title.localeCompare(b.title, "ko"));
+    const eligible = scenarios.filter((s) => {
+      const range = parsePlayerRange(s.playerCount);
+      if (!range || groupSize < range.min || groupSize > range.max) return false;
+      const key = normalizeTitle(s.title);
+      return people.every((p) => !(p.playedTitles || []).includes(key));
+    });
 
-    // 위시리스트가 있으면 그 안에서 먼저 찾고, 맞는 게 하나도 없으면 전체 안 한 작품으로 대체
-    const wishlistMatched = wishlist.length > 0 ? eligible.filter((s) => wishlist.includes(s.id)) : [];
-    if (wishlist.length > 0 && wishlistMatched.length > 0) {
-      setResults(wishlistMatched);
-      setUsedWishlist(true);
-    } else {
-      setResults(eligible);
-      setUsedWishlist(false);
-    }
+    // 전원이 동시에 위시리스트에 담아뒀을 필요는 없음 — 한 명이라도 담아둔 작품이면 상단에 노출
+    const withWish = eligible.map((s) => ({
+      ...s,
+      wishedBy: people.filter((p) => (p.wishlist || []).includes(s.id)).map((p) => (p.id === profile.id ? "나" : displayName(p))),
+    }));
+    withWish.sort((a, b) => {
+      const aw = a.wishedBy.length > 0 ? 0 : 1;
+      const bw = b.wishedBy.length > 0 ? 0 : 1;
+      return aw !== bw ? aw - bw : a.title.localeCompare(b.title, "ko");
+    });
+
+    setResults(withWish);
     setLoading(false);
   }
 
@@ -373,9 +372,7 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
             나 + {selectedFriends.map((f) => displayName(f)).join(", ")} · 총 {groupSize}명
           </div>
           <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
-            {(profile.wishlist || []).length > 0
-              ? "위시리스트 안에서 먼저 찾고, 맞는 게 없으면 안 해본 작품 전체에서 추천해요."
-              : "위시리스트가 비어있어서, 아직 안 해본 작품 전체에서 추천해요."}
+            나나 선택한 친구 중 한 명이라도 위시리스트에 담아둔 작품이 있으면 맨 위로 올려서 보여줘요.
           </div>
           <PrimaryButton onClick={findRecommendations} disabled={loading || !scenarios}>
             {loading ? "찾는 중…" : "추천 받기"}
@@ -388,13 +385,19 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
         ) : (
           <>
             <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-              {usedWishlist ? "♥ 위시리스트 안에서 찾았어요 · " : ""}
-              총 {results.length}개 중 {Math.min(visibleCount, results.length)}개 표시 (가나다순)
+              총 {results.length}개 중 {Math.min(visibleCount, results.length)}개 표시 (가나다순, 위시리스트 우선)
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {results.slice(0, visibleCount).map((s) => (
                 <div key={s.id} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</span>
+                    {s.wishedBy.length > 0 && (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--danger)" }}>
+                        ♥ {s.wishedBy.join(", ")}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
                     {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
                   </div>
