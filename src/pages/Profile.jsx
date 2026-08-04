@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { collection, doc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { toPng } from "html-to-image";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { TYPE_META } from "../lib/personality.js";
 import { AVATAR_EMOJIS, displayName } from "../lib/profileDisplay.js";
 import { resizeImageToDataUrl } from "../lib/image.js";
+import { canUseAI, KAKAO_CONTACT_URL, parseBulkRecords } from "../lib/ai.js";
 import Avatar from "../components/Avatar.jsx";
-import { Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { AILimitNotice, Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function Profile() {
   const { profile, setProfile, signOut } = useAuth();
@@ -182,8 +183,174 @@ export default function Profile() {
         )}
       </Card>
 
+      {!editing && <BulkRecordImport profile={profile} />}
       {!editing && <RecommendationCard profile={profile} main={main} />}
     </div>
+  );
+}
+
+function BulkRecordImport({ profile }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [parsed, setParsed] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [analyzing, setAnalyzing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const fileInputRef = useRef(null);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
+    setSaveStatus("");
+    setFileName(file.name);
+    try {
+      if (/\.(xlsx|xls)$/i.test(file.name)) {
+        const XLSX = await import("xlsx");
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        setText(XLSX.utils.sheet_to_csv(ws));
+      } else {
+        setText(await file.text());
+      }
+    } catch (err) {
+      setError(err.message || "파일을 읽지 못했어요.");
+    }
+  }
+
+  async function analyze() {
+    setError("");
+    setSaveStatus("");
+    setAnalyzing(true);
+    try {
+      const items = await parseBulkRecords(profile, text);
+      setParsed(items);
+      setSelected(new Set(items.map((_, i) => i)));
+    } catch (err) {
+      setError(err.message || "분석에 실패했어요.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  function toggle(i) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  }
+
+  async function saveSelected() {
+    setSaving(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const items = parsed.filter((_, i) => selected.has(i));
+    await Promise.all(
+      items.map((r) =>
+        addDoc(collection(db, "records"), {
+          userId: profile.id,
+          scenarioName: r.scenarioName,
+          character: r.character || "",
+          rating: r.rating || null,
+          note: r.note || "",
+          date: r.date || today,
+          spoiler: true,
+          favorite: false,
+          source: "bulk-ai",
+          createdAt: serverTimestamp(),
+        })
+      )
+    );
+    setSaving(false);
+    setSaveStatus(`${items.length}건 기록에 저장했어요!`);
+    setParsed(null);
+    setText("");
+    setFileName("");
+  }
+
+  if (!open) {
+    return (
+      <Card style={{ marginTop: 20 }}>
+        <OutlineButton style={{ width: "100%" }} onClick={() => setOpen(true)}>
+          📋 머미 기록 한꺼번에 등록 (AI)
+        </OutlineButton>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600 }}>머미 기록 한꺼번에 등록</div>
+        <button type="button" onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "var(--text-sub)", fontSize: 12 }}>
+          닫기
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+        다른 곳에 적어둔 플레이 기록을 그대로 붙여넣거나, 엑셀/CSV/텍스트 파일을 올리면 AI가
+        시나리오·캐릭터·별점·날짜를 알아서 정리해서 기록에 추가해줘요.
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.txt" onChange={handleFile} style={{ display: "none" }} />
+        <OutlineButton type="button" style={{ height: 34, padding: "0 12px", fontSize: 12.5 }} onClick={() => fileInputRef.current?.click()}>
+          📁 파일 올리기 (엑셀·CSV·텍스트)
+        </OutlineButton>
+        {fileName && <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{fileName}</span>}
+      </div>
+
+      <textarea
+        rows={6}
+        placeholder={"예:\n남극지점 X\n엔드롤은 흐르지 않아 - 홍설록 - ★★★★\n2024.03.15 웬디, 어른이 되렴"}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        style={{
+          padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)",
+          background: "var(--bg)", color: "var(--text)", fontSize: 13, resize: "vertical",
+        }}
+      />
+
+      {!canUseAI(profile) ? (
+        <AILimitNotice kakaoUrl={KAKAO_CONTACT_URL} />
+      ) : (
+        <PrimaryButton onClick={analyze} disabled={analyzing || !text.trim()}>
+          {analyzing ? "분석 중…" : "AI로 분석하기"}
+        </PrimaryButton>
+      )}
+      {error && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>{error}</div>}
+
+      {parsed && (
+        parsed.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: "var(--text-sub)" }}>인식된 기록이 없어요. 문구를 조금 더 구체적으로 적어보세요.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{parsed.length}건 인식됨 · {selected.size}건 선택됨</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+              {parsed.map((r, i) => (
+                <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                  <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} style={{ marginTop: 3 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                      {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <PrimaryButton onClick={saveSelected} disabled={saving || selected.size === 0}>
+              {saving ? "저장 중…" : `선택한 ${selected.size}건 기록에 추가`}
+            </PrimaryButton>
+          </div>
+        )
+      )}
+      {saveStatus && <div style={{ fontSize: 12, color: "var(--success)" }}>{saveStatus}</div>}
+    </Card>
   );
 }
 
