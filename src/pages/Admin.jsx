@@ -52,15 +52,29 @@ export default function Admin() {
     });
   }
 
-  async function saveScenario(e) {
+  async function saveScenario(e, { approve } = {}) {
     e.preventDefault();
     setScenarioBusyId(editingScenarioId);
-    await updateDoc(doc(db, "scenarios", editingScenarioId), scenarioForm);
-    setApprovedScenarios((list) =>
-      list
-        .map((s) => (s.id === editingScenarioId ? { ...s, ...scenarioForm } : s))
-        .sort((a, b) => a.title.localeCompare(b.title, "ko"))
-    );
+    const payload = approve ? { ...scenarioForm, status: "approved" } : { ...scenarioForm };
+    await updateDoc(doc(db, "scenarios", editingScenarioId), payload);
+
+    setPendingScenarios((list) => {
+      if (!list) return list;
+      if (approve) return list.filter((x) => x.id !== editingScenarioId);
+      return list.map((s) => (s.id === editingScenarioId ? { ...s, ...payload } : s));
+    });
+    setApprovedScenarios((list) => {
+      if (!list) return list;
+      if (approve) {
+        const original = pendingScenarios?.find((s) => s.id === editingScenarioId) || {};
+        const merged = { ...original, ...payload, id: editingScenarioId };
+        return [...list, merged].sort((a, b) => a.title.localeCompare(b.title, "ko"));
+      }
+      return list
+        .map((s) => (s.id === editingScenarioId ? { ...s, ...payload } : s))
+        .sort((a, b) => a.title.localeCompare(b.title, "ko"));
+    });
+
     setEditingScenarioId(null);
     setScenarioBusyId(null);
   }
@@ -76,6 +90,72 @@ export default function Admin() {
   const filteredApprovedScenarios = (approvedScenarios || []).filter((s) =>
     s.title.toLowerCase().includes(scenarioSearch.trim().toLowerCase())
   );
+
+  function renderScenarioForm(s, { showApprove }) {
+    return (
+      <form
+        key={s.id}
+        onSubmit={(e) => saveScenario(e)}
+        style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0", borderBottom: "1px solid var(--border)" }}
+      >
+        <div style={{ display: "flex", gap: 8 }}>
+          {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
+            <button
+              type="button"
+              key={key}
+              onClick={() => setScenarioForm({ ...scenarioForm, category: key })}
+              style={{
+                flex: 1, height: 30, borderRadius: 8, fontSize: 11.5, fontWeight: 600,
+                border: `1.5px solid ${scenarioForm.category === key ? "var(--accent)" : "var(--border)"}`,
+                background: scenarioForm.category === key ? "var(--accent-dim)" : "transparent",
+                color: scenarioForm.category === key ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <input required placeholder="시나리오 이름" value={scenarioForm.title}
+          onChange={(e) => setScenarioForm({ ...scenarioForm, title: e.target.value })} style={scenarioInputStyle} />
+        <input placeholder="제작사" value={scenarioForm.publisher}
+          onChange={(e) => setScenarioForm({ ...scenarioForm, publisher: e.target.value })} style={scenarioInputStyle} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <input placeholder="인원수" value={scenarioForm.playerCount}
+            onChange={(e) => setScenarioForm({ ...scenarioForm, playerCount: e.target.value })} style={{ ...scenarioInputStyle, flex: 1 }} />
+          <input placeholder="플레이 시간" value={scenarioForm.duration}
+            onChange={(e) => setScenarioForm({ ...scenarioForm, duration: e.target.value })} style={{ ...scenarioInputStyle, flex: 1 }} />
+        </div>
+        <textarea placeholder="설명" rows={2} value={scenarioForm.description}
+          onChange={(e) => setScenarioForm({ ...scenarioForm, description: e.target.value })} style={{ ...scenarioInputStyle, resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setEditingScenarioId(null)}
+            style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: "var(--text-sub)" }}
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={scenarioBusyId === s.id}
+            style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--bg)" }}
+          >
+            {scenarioBusyId === s.id ? "저장 중…" : showApprove ? "저장만" : "저장"}
+          </button>
+          {showApprove && (
+            <button
+              type="button"
+              onClick={(e) => saveScenario(e, { approve: true })}
+              disabled={scenarioBusyId === s.id}
+              style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--success)", background: "var(--success)", color: "var(--bg)" }}
+            >
+              {scenarioBusyId === s.id ? "처리 중…" : "수정 후 승인"}
+            </button>
+          )}
+        </div>
+      </form>
+    );
+  }
 
   async function toggleUnlimited(user) {
     setBusyId(user.id);
@@ -191,35 +271,46 @@ export default function Admin() {
           <EmptyState>대기 중인 요청이 없어요.</EmptyState>
         ) : (
           <ScrollBox maxHeight={420}>
-          {pendingScenarios.map((s) => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ flex: "1 1 160px", minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 999, padding: "1px 7px" }}>
-                    {CATEGORY_LABEL[s.category || "offline"]}
-                  </span>
-                  {s.title}
+          {pendingScenarios.map((s) =>
+            editingScenarioId === s.id ? (
+              renderScenarioForm(s, { showApprove: true })
+            ) : (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 999, padding: "1px 7px" }}>
+                      {CATEGORY_LABEL[s.category || "offline"]}
+                    </span>
+                    {s.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>
+                    {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ") || "추가 정보 없음"} · 요청자 {s.submittedByName}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>
-                  {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ") || "추가 정보 없음"} · 요청자 {s.submittedByName}
-                </div>
+                <button
+                  onClick={() => startEditScenario(s)}
+                  disabled={scenarioBusyId === s.id}
+                  style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: "var(--text)" }}
+                >
+                  확인/수정
+                </button>
+                <button
+                  onClick={() => approveScenario(s)}
+                  disabled={scenarioBusyId === s.id}
+                  style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--success)", background: "var(--success)", color: "var(--bg)" }}
+                >
+                  바로 승인
+                </button>
+                <button
+                  onClick={() => rejectScenario(s)}
+                  disabled={scenarioBusyId === s.id}
+                  style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--danger)", background: "transparent", color: "var(--danger)" }}
+                >
+                  거절
+                </button>
               </div>
-              <button
-                onClick={() => approveScenario(s)}
-                disabled={scenarioBusyId === s.id}
-                style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--success)", background: "var(--success)", color: "var(--bg)" }}
-              >
-                승인
-              </button>
-              <button
-                onClick={() => rejectScenario(s)}
-                disabled={scenarioBusyId === s.id}
-                style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--danger)", background: "transparent", color: "var(--danger)" }}
-              >
-                거절
-              </button>
-            </div>
-          ))}
+            )
+          )}
           </ScrollBox>
         )}
       </Card>
@@ -243,57 +334,7 @@ export default function Admin() {
             <ScrollBox maxHeight={420}>
               {filteredApprovedScenarios.map((s) =>
                 editingScenarioId === s.id ? (
-                  <form
-                    key={s.id}
-                    onSubmit={saveScenario}
-                    style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0", borderBottom: "1px solid var(--border)" }}
-                  >
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
-                        <button
-                          type="button"
-                          key={key}
-                          onClick={() => setScenarioForm({ ...scenarioForm, category: key })}
-                          style={{
-                            flex: 1, height: 30, borderRadius: 8, fontSize: 11.5, fontWeight: 600,
-                            border: `1.5px solid ${scenarioForm.category === key ? "var(--accent)" : "var(--border)"}`,
-                            background: scenarioForm.category === key ? "var(--accent-dim)" : "transparent",
-                            color: scenarioForm.category === key ? "var(--accent)" : "var(--text-sub)",
-                          }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <input required placeholder="시나리오 이름" value={scenarioForm.title}
-                      onChange={(e) => setScenarioForm({ ...scenarioForm, title: e.target.value })} style={scenarioInputStyle} />
-                    <input placeholder="제작사" value={scenarioForm.publisher}
-                      onChange={(e) => setScenarioForm({ ...scenarioForm, publisher: e.target.value })} style={scenarioInputStyle} />
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <input placeholder="인원수" value={scenarioForm.playerCount}
-                        onChange={(e) => setScenarioForm({ ...scenarioForm, playerCount: e.target.value })} style={{ ...scenarioInputStyle, flex: 1 }} />
-                      <input placeholder="플레이 시간" value={scenarioForm.duration}
-                        onChange={(e) => setScenarioForm({ ...scenarioForm, duration: e.target.value })} style={{ ...scenarioInputStyle, flex: 1 }} />
-                    </div>
-                    <textarea placeholder="설명" rows={2} value={scenarioForm.description}
-                      onChange={(e) => setScenarioForm({ ...scenarioForm, description: e.target.value })} style={{ ...scenarioInputStyle, resize: "vertical" }} />
-                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                      <button
-                        type="button"
-                        onClick={() => setEditingScenarioId(null)}
-                        style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: "var(--text-sub)" }}
-                      >
-                        취소
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={scenarioBusyId === s.id}
-                        style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--bg)" }}
-                      >
-                        {scenarioBusyId === s.id ? "저장 중…" : "저장"}
-                      </button>
-                    </div>
-                  </form>
+                  renderScenarioForm(s, { showApprove: false })
                 ) : (
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ flex: "1 1 160px", minWidth: 0 }}>
