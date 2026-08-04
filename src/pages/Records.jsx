@@ -4,6 +4,7 @@ import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTime
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { expandDateRange } from "../lib/dateUtils.js";
+import { syncPlayedTitles } from "../lib/records.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 
@@ -126,12 +127,14 @@ export default function Records() {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setShowForm(false);
+    await syncPlayedTitles(profile.id);
     load();
   }
 
   async function removeRecord(id) {
     if (!window.confirm("이 기록을 삭제할까요?")) return;
     await deleteDoc(doc(db, "records", id));
+    await syncPlayedTitles(profile.id);
     load();
   }
 

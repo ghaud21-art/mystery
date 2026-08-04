@@ -9,6 +9,7 @@ import { db } from "../lib/firebase.js";
 import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { expandDateRange } from "../lib/dateUtils.js";
+import { normalizeTitle } from "../lib/scenarioUtils.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import Avatar from "../components/Avatar.jsx";
@@ -791,18 +792,14 @@ function UnplayedTab({ members }) {
     })();
   }, []);
 
-  async function findUnplayed() {
+  function findUnplayed() {
     setLoading(true);
-    const playedSets = await Promise.all(
-      members.map(async (m) => {
-        const snap = await getDocs(query(collection(db, "records"), where("userId", "==", m.id)));
-        return new Set(snap.docs.map((d) => (d.data().scenarioName || "").trim().toLowerCase()));
-      })
-    );
+    // records는 본인만 읽을 수 있어서 멤버 기록을 직접 조회할 수 없음 —
+    // 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
     const unplayed = scenarios
       .filter((s) => {
-        const key = s.title.trim().toLowerCase();
-        return playedSets.every((set) => !set.has(key));
+        const key = normalizeTitle(s.title);
+        return members.every((m) => !(m.playedTitles || []).includes(key));
       })
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
     setResults(unplayed);

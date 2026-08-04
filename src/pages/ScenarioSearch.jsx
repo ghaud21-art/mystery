@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { normalizeTitle, parsePlayerRange, PLAYER_TABS } from "../lib/scenarioUtils.js";
+import { syncPlayedTitles } from "../lib/records.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
@@ -15,10 +16,11 @@ const CATEGORY_TABS = [
 ];
 
 export default function ScenarioSearch() {
-  const { profile } = useAuth();
+  const { profile, setProfile } = useAuth();
   const [scenarios, setScenarios] = useState(null);
   const [category, setCategory] = useState("offline");
   const [playerTab, setPlayerTab] = useState("all");
+  const [wishlistOnly, setWishlistOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -59,9 +61,19 @@ export default function ScenarioSearch() {
       favorite: quickForm.favorite,
       createdAt: serverTimestamp(),
     });
+    await syncPlayedTitles(profile.id);
     setPlayedTitles((prev) => new Set(prev).add(normalizeTitle(s.title)));
     setQuickAddId(null);
     setSavingId(null);
+  }
+
+  async function toggleWishlist(s) {
+    const has = (profile.wishlist || []).includes(s.id);
+    await updateDoc(doc(db, "users", profile.id), { wishlist: has ? arrayRemove(s.id) : arrayUnion(s.id) });
+    setProfile((p) => ({
+      ...p,
+      wishlist: has ? (p.wishlist || []).filter((id) => id !== s.id) : [...(p.wishlist || []), s.id],
+    }));
   }
 
   const filtered = useMemo(() => {
@@ -75,9 +87,10 @@ export default function ScenarioSearch() {
         const r = parsePlayerRange(s.playerCount);
         return r ? tab.test(r) : false;
       })
+      .filter((s) => !wishlistOnly || (profile?.wishlist || []).includes(s.id))
       .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
     return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search, category, playerTab]);
+  }, [scenarios, search, category, playerTab, wishlistOnly, profile?.wishlist]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -148,6 +161,19 @@ export default function ScenarioSearch() {
           ))}
         </div>
 
+        <button
+          type="button"
+          onClick={() => setWishlistOnly((v) => !v)}
+          style={{
+            height: 34, borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+            border: `1.5px solid ${wishlistOnly ? "var(--danger)" : "var(--border)"}`,
+            background: wishlistOnly ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "transparent",
+            color: wishlistOnly ? "var(--danger)" : "var(--text-sub)",
+          }}
+        >
+          {wishlistOnly ? "♥" : "♡"} 위시리스트만 보기
+        </button>
+
         <input
           placeholder="시나리오 이름으로 검색"
           value={search}
@@ -195,7 +221,9 @@ export default function ScenarioSearch() {
           <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
         ) : filtered.length === 0 ? (
           <EmptyState>
-            {scenarios.length === 0
+            {wishlistOnly
+              ? "위시리스트가 비어있어요. 하트를 눌러서 하고 싶은 머미를 담아보세요."
+              : scenarios.length === 0
               ? "아직 등록된 시나리오가 없어요. 위에서 첫 작품을 등록 요청해보세요."
               : "검색 결과가 없어요."}
           </EmptyState>
@@ -207,9 +235,20 @@ export default function ScenarioSearch() {
                 {filtered.map((s) => {
                   const played = playedTitles?.has(normalizeTitle(s.title));
                   const quickOpen = quickAddId === s.id;
+                  const wished = (profile?.wishlist || []).includes(s.id);
                   return (
                     <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <div style={{ flex: 1, fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
+                        <button
+                          type="button"
+                          onClick={() => toggleWishlist(s)}
+                          title={wished ? "위시리스트에서 빼기" : "하고 싶은 머미로 표시"}
+                          style={{ flex: "none", background: "none", border: "none", fontSize: 18, lineHeight: 1, cursor: "pointer", color: wished ? "var(--danger)" : "var(--text-sub)" }}
+                        >
+                          {wished ? "♥" : "♡"}
+                        </button>
+                      </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
                         <InfoRow icon="👥" value={s.playerCount || "인원 미상"} />

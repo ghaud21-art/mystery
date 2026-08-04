@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayName } from "../lib/profileDisplay.js";
-import { parsePlayerRange } from "../lib/scenarioUtils.js";
+import { normalizeTitle, parsePlayerRange } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
@@ -326,22 +326,21 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
   const selectedFriends = friends.filter((f) => selectedIds.has(f.id));
   const groupSize = 1 + selectedFriends.length;
 
-  async function findRecommendations() {
+  function findRecommendations() {
     setLoading(true);
     setResults(null);
+    // records 컬렉션은 본인만 읽을 수 있어서 친구 기록을 직접 조회할 수 없음 —
+    // 대신 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
     const people = [profile, ...selectedFriends];
-    const playedSets = await Promise.all(
-      people.map(async (p) => {
-        const snap = await getDocs(query(collection(db, "records"), where("userId", "==", p.id)));
-        return new Set(snap.docs.map((d) => (d.data().scenarioName || "").trim().toLowerCase()));
-      })
-    );
+    const wishlist = profile.wishlist || [];
     const matched = scenarios
       .filter((s) => {
         const range = parsePlayerRange(s.playerCount);
         if (!range || groupSize < range.min || groupSize > range.max) return false;
-        const key = s.title.trim().toLowerCase();
-        return playedSets.every((set) => !set.has(key));
+        const key = normalizeTitle(s.title);
+        const notPlayed = people.every((p) => !(p.playedTitles || []).includes(key));
+        if (!notPlayed) return false;
+        return wishlist.length > 0 ? wishlist.includes(s.id) : true;
       })
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
     setResults(matched);
@@ -361,6 +360,11 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
           <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
             나 + {selectedFriends.map((f) => displayName(f)).join(", ")} · 총 {groupSize}명
           </div>
+          <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+            {(profile.wishlist || []).length > 0
+              ? "찾기 탭에서 하트 찍어둔 위시리스트 안에서 추천해요."
+              : "위시리스트가 비어있어서, 아직 안 해본 작품 전체에서 추천해요."}
+          </div>
           <PrimaryButton onClick={findRecommendations} disabled={loading || !scenarios}>
             {loading ? "찾는 중…" : "추천 받기"}
           </PrimaryButton>
@@ -368,7 +372,10 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
       )}
       {results !== null && (
         results.length === 0 ? (
-          <EmptyState>{groupSize}명 인원에 맞고 다 같이 안 해본 작품을 못 찾았어요.</EmptyState>
+          <EmptyState>
+            {groupSize}명 인원에 맞고 다 같이 안 해본 작품을 못 찾았어요.
+            {(profile.wishlist || []).length > 0 && " (위시리스트 안에서는 없어요)"}
+          </EmptyState>
         ) : (
           <>
             <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {results.length}개 (가나다순)</div>

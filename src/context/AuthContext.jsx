@@ -18,6 +18,8 @@ const DEFAULT_PROFILE_FIELDS = {
   aiUsageCount: 0,
   aiUnlimited: false,
   availableDates: [],
+  playedTitles: [],
+  wishlist: [],
 };
 
 async function ensureUserProfile(user) {

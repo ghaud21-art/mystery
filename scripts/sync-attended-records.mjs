@@ -3,6 +3,7 @@
 // 한 번 처리한 일정은 recordSynced:true로 표시해 다음 실행에서 건너뜀.
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { normalizeTitle } from "../src/lib/scenarioUtils.js";
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
 initializeApp({ credential: cert(serviceAccount) });
@@ -49,6 +50,9 @@ for (const doc of dueSchedules) {
       date,
       source: "auto-schedule",
       createdAt: FieldValue.serverTimestamp(),
+    });
+    await db.collection("users").doc(uid).update({
+      playedTitles: FieldValue.arrayUnion(normalizeTitle(s.title)),
     });
     created++;
   }

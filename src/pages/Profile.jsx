@@ -9,6 +9,7 @@ import { AVATAR_EMOJIS, displayName } from "../lib/profileDisplay.js";
 import { resizeImageToDataUrl } from "../lib/image.js";
 import { canUseAI, KAKAO_CONTACT_URL, parseBulkRecords } from "../lib/ai.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
+import { syncPlayedTitles } from "../lib/records.js";
 import Avatar from "../components/Avatar.jsx";
 import DetectiveProfileCard from "../components/DetectiveProfileCard.jsx";
 import { AILimitNotice, Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
@@ -319,6 +320,8 @@ function BulkRecordImport({ profile }) {
         })
       )
     );
+
+    await syncPlayedTitles(profile.id);
 
     setSaving(false);
     setSaveStatus(
