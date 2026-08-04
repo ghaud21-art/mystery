@@ -17,7 +17,7 @@ export default defineConfig({
         id: "/",
         name: "머더미스터리",
         short_name: "머더미스터리",
-        description: "추리게임·방탈출을 좋아하는 사람들의 성향 궁합 + 모임 기록 커뮤니티",
+        description: "생각하는 힘을 기르는 사람들의 성향 궁합 + 모임 기록 커뮤니티",
         lang: "ko",
         start_url: "/",
         scope: "/",
