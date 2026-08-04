@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
-import { parsePlayerRange, PLAYER_TABS } from "../lib/scenarioUtils.js";
+import { normalizeTitle, parsePlayerRange, PLAYER_TABS } from "../lib/scenarioUtils.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
+
+const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
 
 const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline" };
 const CATEGORY_TABS = [
@@ -22,13 +23,46 @@ export default function ScenarioSearch() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitStatus, setSubmitStatus] = useState("");
+  const [playedTitles, setPlayedTitles] = useState(null);
+  const [quickAddId, setQuickAddId] = useState(null);
+  const [quickForm, setQuickForm] = useState(QUICK_FORM_EMPTY);
+  const [savingId, setSavingId] = useState(null);
 
   async function loadScenarios() {
     const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
     setScenarios(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 
+  async function loadPlayedTitles() {
+    const snap = await getDocs(query(collection(db, "records"), where("userId", "==", profile.id)));
+    setPlayedTitles(new Set(snap.docs.map((d) => normalizeTitle(d.data().scenarioName))));
+  }
+
   useEffect(() => { loadScenarios(); }, []);
+  useEffect(() => { if (profile?.id) loadPlayedTitles(); }, [profile?.id]);
+
+  function startQuickAdd(s) {
+    setQuickAddId(s.id);
+    setQuickForm(QUICK_FORM_EMPTY);
+  }
+
+  async function saveQuickAdd(s) {
+    setSavingId(s.id);
+    await addDoc(collection(db, "records"), {
+      userId: profile.id,
+      scenarioName: s.title,
+      character: quickForm.character.trim(),
+      rating: quickForm.rating > 0 ? Number(quickForm.rating) : null,
+      note: "",
+      date: new Date().toISOString().slice(0, 10),
+      spoiler: true,
+      favorite: quickForm.favorite,
+      createdAt: serverTimestamp(),
+    });
+    setPlayedTitles((prev) => new Set(prev).add(normalizeTitle(s.title)));
+    setQuickAddId(null);
+    setSavingId(null);
+  }
 
   const filtered = useMemo(() => {
     if (!scenarios) return [];
@@ -170,19 +204,59 @@ export default function ScenarioSearch() {
             <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순)</div>
             <ScrollBox maxHeight="clamp(280px, calc(100vh - 380px), 640px)">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
-                {filtered.map((s) => (
-                  <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
-                      <InfoRow icon="👥" value={s.playerCount || "인원 미상"} />
-                      <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
+                {filtered.map((s) => {
+                  const played = playedTitles?.has(normalizeTitle(s.title));
+                  const quickOpen = quickAddId === s.id;
+                  return (
+                    <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
+                        <InfoRow icon="👥" value={s.playerCount || "인원 미상"} />
+                        <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
+                      </div>
+
+                      {played ? (
+                        <OutlineButton disabled style={{ width: "100%", height: 32, fontSize: 12, color: "var(--text-sub)" }}>
+                          ✓ 이미 기록됨
+                        </OutlineButton>
+                      ) : quickOpen ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
+                          <input
+                            placeholder="맡은 캐릭터/역할 (선택)"
+                            value={quickForm.character}
+                            onChange={(e) => setQuickForm({ ...quickForm, character: e.target.value })}
+                            style={{ ...inputStyle, padding: "7px 10px", fontSize: 12 }}
+                          />
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <select
+                              value={quickForm.rating}
+                              onChange={(e) => setQuickForm({ ...quickForm, rating: e.target.value })}
+                              style={{ ...inputStyle, padding: "7px 10px", fontSize: 12, flex: 1 }}
+                            >
+                              <option value={0}>평가 안 함</option>
+                              {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)}</option>)}
+                            </select>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--accent)", whiteSpace: "nowrap" }}>
+                              <input type="checkbox" checked={quickForm.favorite} onChange={(e) => setQuickForm({ ...quickForm, favorite: e.target.checked })} />
+                              ⭐ 인생머미
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <OutlineButton style={{ flex: 1, height: 30, fontSize: 11.5 }} onClick={() => setQuickAddId(null)}>취소</OutlineButton>
+                            <PrimaryButton style={{ flex: 1, height: 30, fontSize: 11.5 }} disabled={savingId === s.id} onClick={() => saveQuickAdd(s)}>
+                              {savingId === s.id ? "저장 중…" : "저장"}
+                            </PrimaryButton>
+                          </div>
+                        </div>
+                      ) : (
+                        <OutlineButton style={{ width: "100%", height: 32, fontSize: 12 }} onClick={() => startQuickAdd(s)}>
+                          + 기록에 추가
+                        </OutlineButton>
+                      )}
                     </div>
-                    <Link to="/records" state={{ scenarioName: s.title }}>
-                      <OutlineButton style={{ width: "100%", height: 32, fontSize: 12 }}>+ 기록에 추가</OutlineButton>
-                    </Link>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollBox>
           </>

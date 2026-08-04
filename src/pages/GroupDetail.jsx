@@ -802,7 +802,7 @@ function UnplayedTab({ members }) {
     const unplayed = scenarios
       .filter((s) => {
         const key = s.title.trim().toLowerCase();
-        return playedSets.some((set) => !set.has(key));
+        return playedSets.every((set) => !set.has(key));
       })
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
     setResults(unplayed);
@@ -813,7 +813,7 @@ function UnplayedTab({ members }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 13, color: "var(--text-sub)" }}>
-          이 모임 멤버({members.map((m) => displayName(m)).join(", ")}) 중 한 명이라도 안 해본
+          이 모임 멤버({members.map((m) => displayName(m)).join(", ")}) 전원이 아직 안 해본
           시나리오를 우리 DB에서 찾아드려요.
         </div>
         <PrimaryButton onClick={findUnplayed} disabled={loading || !scenarios}>

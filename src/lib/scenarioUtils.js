@@ -8,6 +8,11 @@ export function parsePlayerRange(str) {
   return { min, max };
 }
 
+// 띄어쓰기·특수문자 차이는 무시하고 글자(한글/영문/숫자)만 남겨서 같은 작품인지 비교.
+export function normalizeTitle(t) {
+  return (t || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
 export const PLAYER_TABS = [
   { key: "all", label: "전체", test: () => true },
   { key: "2", label: "2인", test: (r) => r.min <= 2 && r.max >= 2 },

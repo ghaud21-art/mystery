@@ -8,6 +8,7 @@ import { TYPE_META } from "../lib/personality.js";
 import { AVATAR_EMOJIS, displayName } from "../lib/profileDisplay.js";
 import { resizeImageToDataUrl } from "../lib/image.js";
 import { canUseAI, KAKAO_CONTACT_URL, parseBulkRecords } from "../lib/ai.js";
+import { normalizeTitle } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
 import { AILimitNotice, Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
@@ -187,12 +188,6 @@ export default function Profile() {
       {!editing && <RecommendationCard profile={profile} main={main} />}
     </div>
   );
-}
-
-// 띄어쓰기·특수문자 차이는 무시하고 글자(한글/영문/숫자)만 남겨서 비교.
-// "엔드롤은 흐르지 않아"와 "엔드롤은, 흐르지-않아!"를 같은 작품으로 인식하기 위함.
-function normalizeTitle(t) {
-  return (t || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 const REQUEST_CATEGORY_LABEL = { offline: "오프라인", online: "온라인", none: "요청 안 함" };

@@ -341,7 +341,7 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
         const range = parsePlayerRange(s.playerCount);
         if (!range || groupSize < range.min || groupSize > range.max) return false;
         const key = s.title.trim().toLowerCase();
-        return playedSets.some((set) => !set.has(key));
+        return playedSets.every((set) => !set.has(key));
       })
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
     setResults(matched);
