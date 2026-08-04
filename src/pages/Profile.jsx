@@ -189,12 +189,18 @@ export default function Profile() {
   );
 }
 
+function normalizeTitle(t) {
+  return (t || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function BulkRecordImport({ profile }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
   const [parsed, setParsed] = useState(null);
   const [selected, setSelected] = useState(new Set());
+  const [requestFlags, setRequestFlags] = useState(new Set());
+  const [requestCategory, setRequestCategory] = useState("offline");
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -229,13 +235,36 @@ function BulkRecordImport({ profile }) {
     setAnalyzing(true);
     try {
       const items = await parseBulkRecords(profile, text);
-      setParsed(items);
-      setSelected(new Set(items.map((_, i) => i)));
+
+      const [approvedSnap, myPendingSnap] = await Promise.all([
+        getDocs(query(collection(db, "scenarios"), where("status", "==", "approved"))),
+        getDocs(query(collection(db, "scenarios"), where("status", "==", "pending"), where("submittedBy", "==", profile.id))),
+      ]);
+      const approvedTitles = new Set(approvedSnap.docs.map((d) => normalizeTitle(d.data().title)));
+      const myPendingTitles = new Set(myPendingSnap.docs.map((d) => normalizeTitle(d.data().title)));
+
+      const withMatch = items.map((r) => {
+        const key = normalizeTitle(r.scenarioName);
+        const matchStatus = approvedTitles.has(key) ? "approved" : myPendingTitles.has(key) ? "pending" : "none";
+        return { ...r, matchStatus };
+      });
+
+      setParsed(withMatch);
+      setSelected(new Set(withMatch.map((_, i) => i)));
+      setRequestFlags(new Set(withMatch.map((r, i) => (r.matchStatus === "none" ? i : null)).filter((i) => i !== null)));
     } catch (err) {
       setError(err.message || "분석에 실패했어요.");
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  function toggleRequest(i) {
+    setRequestFlags((prev) => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
   }
 
   function toggle(i) {
@@ -249,7 +278,9 @@ function BulkRecordImport({ profile }) {
   async function saveSelected() {
     setSaving(true);
     const today = new Date().toISOString().slice(0, 10);
-    const items = parsed.filter((_, i) => selected.has(i));
+    const indices = [...selected];
+    const items = indices.map((i) => parsed[i]);
+
     await Promise.all(
       items.map((r) =>
         addDoc(collection(db, "records"), {
@@ -266,8 +297,39 @@ function BulkRecordImport({ profile }) {
         })
       )
     );
+
+    const requestIndices = indices.filter((i) => parsed[i].matchStatus === "none" && requestFlags.has(i));
+    // 같은 배치 안에서 같은 제목을 여러 번 요청하지 않도록 정리
+    const seenTitles = new Set();
+    const requestItems = requestIndices
+      .map((i) => parsed[i])
+      .filter((r) => {
+        const key = normalizeTitle(r.scenarioName);
+        if (seenTitles.has(key)) return false;
+        seenTitles.add(key);
+        return true;
+      });
+    await Promise.all(
+      requestItems.map((r) =>
+        addDoc(collection(db, "scenarios"), {
+          title: r.scenarioName,
+          publisher: "",
+          playerCount: "",
+          duration: "",
+          description: "",
+          category: requestCategory,
+          status: "pending",
+          submittedBy: profile.id,
+          submittedByName: displayName(profile),
+        })
+      )
+    );
+
     setSaving(false);
-    setSaveStatus(`${items.length}건 기록에 저장했어요!`);
+    setSaveStatus(
+      `${items.length}건 기록에 저장했어요!` +
+        (requestItems.length > 0 ? ` (${requestItems.length}개 작품은 시나리오 등록 요청도 함께 보냈어요)` : "")
+    );
     setParsed(null);
     setText("");
     setFileName("");
@@ -330,18 +392,61 @@ function BulkRecordImport({ profile }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{parsed.length}건 인식됨 · {selected.size}건 선택됨</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
-              {parsed.map((r, i) => (
-                <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
-                  <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} style={{ marginTop: 3 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
-                      {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
-                    </div>
+
+            {parsed.some((r) => r.matchStatus === "none") && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-sub)" }}>
+                시나리오 DB에 없는 작품은
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[{ key: "offline", label: "오프라인" }, { key: "online", label: "온라인" }].map((t) => (
+                    <button
+                      type="button"
+                      key={t.key}
+                      onClick={() => setRequestCategory(t.key)}
+                      style={{
+                        height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5,
+                        border: `1.5px solid ${requestCategory === t.key ? "var(--accent)" : "var(--border)"}`,
+                        background: requestCategory === t.key ? "var(--accent-dim)" : "transparent",
+                        color: requestCategory === t.key ? "var(--accent)" : "var(--text-sub)",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                로 등록 요청해요
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+              {parsed.map((r, i) => {
+                const badge = {
+                  approved: { label: "✓ 등록된 시나리오", color: "var(--success)" },
+                  pending: { label: "🕐 이미 등록 요청함", color: "var(--text-sub)" },
+                  none: { label: "＋ 신규 작품", color: "var(--accent)" },
+                }[r.matchStatus];
+                return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} style={{ marginTop: 3 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: badge.color }}>{badge.label}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                          {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
+                        </div>
+                      </div>
+                    </label>
+                    {r.matchStatus === "none" && selected.has(i) && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 24, fontSize: 11, color: "var(--text-sub)" }}>
+                        <input type="checkbox" checked={requestFlags.has(i)} onChange={() => toggleRequest(i)} />
+                        이 작품도 시나리오 DB에 등록 요청하기
+                      </label>
+                    )}
                   </div>
-                </label>
-              ))}
+                );
+              })}
             </div>
             <PrimaryButton onClick={saveSelected} disabled={saving || selected.size === 0}>
               {saving ? "저장 중…" : `선택한 ${selected.size}건 기록에 추가`}
