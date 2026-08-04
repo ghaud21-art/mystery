@@ -10,6 +10,7 @@ import { resizeImageToDataUrl } from "../lib/image.js";
 import { canUseAI, KAKAO_CONTACT_URL, parseBulkRecords } from "../lib/ai.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
+import DetectiveProfileCard from "../components/DetectiveProfileCard.jsx";
 import { AILimitNotice, Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 export default function Profile() {
@@ -504,9 +505,10 @@ function BulkImportPreview({ parsed, step, setStep, selected, toggle, requestCho
 }
 
 function RecommendationCard({ profile, main }) {
-  const cardRef = useRef(null);
+  const wrapRef = useRef(null);
   const [records, setRecords] = useState(null);
   const [customText, setCustomText] = useState("");
+  const [includeStyle, setIncludeStyle] = useState(false);
   const [busy, setBusy] = useState("");
 
   useEffect(() => {
@@ -525,8 +527,9 @@ function RecommendationCard({ profile, main }) {
     setBusy("saving");
     try {
       await document.fonts.ready;
-      const rect = cardRef.current.getBoundingClientRect();
-      const dataUrl = await toPng(cardRef.current, {
+      const node = wrapRef.current;
+      const rect = node.getBoundingClientRect();
+      const dataUrl = await toPng(node, {
         pixelRatio: 2, width: Math.ceil(rect.width), height: Math.ceil(rect.height), cacheBust: true,
       });
       const a = document.createElement("a");
@@ -555,54 +558,64 @@ function RecommendationCard({ profile, main }) {
         }}
       />
 
-      <div
-        ref={cardRef}
-        style={{
-          background: "linear-gradient(165deg,var(--bg-sub),var(--card))", border: "1px solid var(--accent)",
-          borderRadius: 16, padding: "24px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
-        }}
-      >
-        <Avatar profile={profile} size={64} style={{ fontSize: 28 }} />
-        <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{displayName(profile)}</div>
-        {main && (
-          <span style={{
-            display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999,
-            border: `1px solid var(--type-${main.cssVar})`, color: `var(--type-${main.cssVar})`,
-            fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-          }}>
-            {main.icon} {main.title}
-          </span>
-        )}
-        {customText && (
-          <div style={{ fontSize: 12.5, color: "var(--text-sub)", fontStyle: "italic", textAlign: "center" }}>
-            &ldquo;{customText}&rdquo;
-          </div>
-        )}
-        <div style={{ width: "100%", height: 1, background: "var(--border)" }} />
-        <div style={{ width: "100%" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: 1, marginBottom: 8 }}>
-            PLAYED · {records?.length ?? 0}편
-          </div>
-          {records === null ? (
-            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>불러오는 중…</div>
-          ) : records.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>아직 플레이 기록이 없어요.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {favorites.length === 0 ? (
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                  아직 ⭐인생머미로 표시한 기록이 없어요 (플레이 기록에서 체크할 수 있어요)
-                </div>
-              ) : (
-                favorites.map((r, i) => (
-                  <div key={i} style={{ fontSize: 12.5 }}>⭐ {r.scenarioName}</div>
-                ))
-              )}
-              {otherCount > 0 && (
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>그 외 {otherCount}편</div>
-              )}
+      {main && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-sub)" }}>
+          <input type="checkbox" checked={includeStyle} onChange={(e) => setIncludeStyle(e.target.checked)} />
+          추리 성향 카드와 함께 이미지 저장하기
+        </label>
+      )}
+
+      <div ref={wrapRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {includeStyle && main && <DetectiveProfileCard profile={profile} />}
+
+        <div
+          style={{
+            background: "linear-gradient(165deg,var(--bg-sub),var(--card))", border: "1px solid var(--accent)",
+            borderRadius: 16, padding: "24px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+          }}
+        >
+          <Avatar profile={profile} size={64} style={{ fontSize: 28 }} />
+          <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{displayName(profile)}</div>
+          {main && (
+            <span style={{
+              display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999,
+              border: `1px solid var(--type-${main.cssVar})`, color: `var(--type-${main.cssVar})`,
+              fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+            }}>
+              {main.icon} {main.title}
+            </span>
+          )}
+          {customText && (
+            <div style={{ fontSize: 12.5, color: "var(--text-sub)", fontStyle: "italic", textAlign: "center" }}>
+              &ldquo;{customText}&rdquo;
             </div>
           )}
+          <div style={{ width: "100%", height: 1, background: "var(--border)" }} />
+          <div style={{ width: "100%" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: 1, marginBottom: 8 }}>
+              PLAYED · {records?.length ?? 0}편
+            </div>
+            {records === null ? (
+              <div style={{ fontSize: 12, color: "var(--text-sub)" }}>불러오는 중…</div>
+            ) : records.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-sub)" }}>아직 플레이 기록이 없어요.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {favorites.length === 0 ? (
+                  <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                    아직 ⭐인생머미로 표시한 기록이 없어요 (플레이 기록에서 체크할 수 있어요)
+                  </div>
+                ) : (
+                  favorites.map((r, i) => (
+                    <div key={i} style={{ fontSize: 12.5 }}>⭐ {r.scenarioName}</div>
+                  ))
+                )}
+                {otherCount > 0 && (
+                  <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>그 외 {otherCount}편</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
