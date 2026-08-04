@@ -3,6 +3,8 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import AppShell from "./components/AppShell.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Landing from "./pages/Landing.jsx";
+import Terms from "./pages/Terms.jsx";
+import Privacy from "./pages/Privacy.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import StyleTest from "./pages/StyleTest.jsx";
 import StyleResult from "./pages/StyleResult.jsx";
@@ -17,6 +19,8 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<Dashboard />} />

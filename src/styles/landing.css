@@ -97,9 +97,12 @@
   color: var(--text-sub);
   width: 280px;
 }
-.landing-terms span {
+.landing-terms a {
+  color: var(--text-sub);
   text-decoration: underline;
-  cursor: pointer;
+}
+.landing-terms a:hover {
+  color: var(--accent);
 }
 
 @media (max-width: 880px) {

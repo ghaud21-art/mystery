@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import "../styles/landing.css";
 
@@ -27,7 +27,7 @@ export default function Landing() {
           Google로 시작하기
         </button>
         <p className="landing-terms">
-          로그인 시 <span>이용약관</span>과 <span>개인정보처리방침</span>에 동의하게 됩니다
+          로그인 시 <Link to="/terms">이용약관</Link>과 <Link to="/privacy">개인정보처리방침</Link>에 동의하게 됩니다
         </p>
       </div>
     </div>
