@@ -155,6 +155,26 @@ export default function Agenda() {
     return set;
   }, [items, personalSchedules, profile?.id]);
 
+  const eventsByDate = useMemo(() => {
+    const map = {};
+    (items || []).forEach((s) => {
+      if (s.attendees?.[profile.id] !== "yes" || !s.datetime) return;
+      expandDateRange(s.datetime, s.endDatetime).forEach((k) => {
+        (map[k] = map[k] || []).push({ label: s.title, color: "var(--accent)", type: "group", detail: s });
+      });
+    });
+    (personalSchedules || []).forEach((s) => {
+      if (!s.datetime) return;
+      expandDateRange(s.datetime, s.endDatetime).forEach((k) => {
+        (map[k] = map[k] || []).push({ label: s.title, color: "#8b5cf6", type: "personal", detail: s });
+      });
+    });
+    return map;
+  }, [items, personalSchedules, profile?.id]);
+
+  const [selectedDate, setSelectedDate] = useState(null);
+  const selectedEvents = selectedDate ? eventsByDate[selectedDate] || [] : [];
+
   const upcoming = useMemo(() => {
     const now = new Date().toISOString();
     return (items || []).filter((s) => s.datetime >= now);
@@ -191,11 +211,44 @@ export default function Agenda() {
       </Card>
 
       <Card style={{ marginBottom: 20 }}>
-        <MonthCalendar markedDates={markedDates} />
-        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />
-          내가 참석하는 모임 일정 + 개인 일정
+        <MonthCalendar
+          markedDates={markedDates}
+          eventsByDate={eventsByDate}
+          selectedDate={selectedDate}
+          onSelectDate={(key) => setSelectedDate((d) => (d === key ? null : key))}
+        />
+        <div style={{ marginTop: 10, display: "flex", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent)", display: "inline-block" }} />
+            모임 일정
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "#8b5cf6", display: "inline-block" }} />
+            개인 일정
+          </div>
         </div>
+
+        {selectedDate && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedDate}</div>
+            {selectedEvents.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-sub)" }}>이 날짜엔 일정이 없어요.</div>
+            ) : (
+              selectedEvents.map((e, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 3, background: e.color, marginTop: 4, flex: "none" }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{e.detail.title}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                      {formatDate(e.detail.datetime)}{e.detail.endDatetime ? ` ~ ${formatDate(e.detail.endDatetime)}` : ""} · {e.detail.location}
+                      {e.type === "group" && ` · ${e.detail.groupName}`}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </Card>
 
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
