@@ -28,6 +28,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // users/{uid}/private/{docId} — 본인만 읽고 쓸 수 있음 (궁합 주관식 답변 등 비공개 데이터).
+    match /users/{uid}/private/{docId} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
     // config/gemini — 관리자만 API 키를 읽고 쓸 수 있음 (일반 유저는 접근 불가).
     match /config/{docId} {
       allow read, write: if isAdmin();

@@ -12,18 +12,27 @@ export default function Agenda() {
   const [items, setItems] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [notifStatus, setNotifStatus] = useState("");
+  const [currentToken, setCurrentToken] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
 
   const notifEnabled = (profile?.fcmTokens?.length || 0) > 0;
 
   async function handleEnableNotifications() {
     setNotifStatus("설정 중…");
     try {
-      await enableReminderNotifications(profile.id);
-      setProfile((p) => ({ ...p, fcmTokens: [...(p.fcmTokens || []), "registered"] }));
+      const token = await enableReminderNotifications(profile.id);
+      setCurrentToken(token);
+      setProfile((p) => ({ ...p, fcmTokens: [...new Set([...(p.fcmTokens || []), token])] }));
       setNotifStatus("알림이 켜졌어요 ✓");
     } catch (err) {
       setNotifStatus(err.message || "알림 설정에 실패했어요.");
     }
+  }
+
+  async function copyToken() {
+    await navigator.clipboard.writeText(currentToken);
+    setCopyStatus("복사됐어요!");
+    setTimeout(() => setCopyStatus(""), 2000);
   }
 
   useEffect(() => {
@@ -71,15 +80,33 @@ export default function Agenda() {
 
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 13.5, fontWeight: 600 }}>일정 전날 알림</div>
-        {notifEnabled ? (
+        {notifEnabled && !currentToken ? (
           <div style={{ fontSize: 13, color: "var(--success)" }}>알림이 켜져 있어요 ✓</div>
-        ) : (
-          <OutlineButton onClick={handleEnableNotifications} disabled={notifStatus === "설정 중…"}>
-            {notifStatus === "설정 중…" ? "설정 중…" : "일정 전날 알림 받기"}
-          </OutlineButton>
-        )}
+        ) : null}
+        <OutlineButton onClick={handleEnableNotifications} disabled={notifStatus === "설정 중…"}>
+          {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? "이 기기 알림 토큰 확인" : "일정 전날 알림 받기"}
+        </OutlineButton>
         {notifStatus && notifStatus !== "설정 중…" && (
           <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{notifStatus}</div>
+        )}
+        {currentToken && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+              이 기기의 FCM 토큰이에요. Firebase 콘솔 → Engage → Messaging → 새 캠페인 →
+              &ldquo;테스트 메시지 전송&rdquo;에 붙여넣으면 이 기기로 알림을 테스트할 수 있어요.
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{
+                flex: 1, minWidth: 0, fontSize: 10.5, fontFamily: "ui-monospace,monospace", overflowWrap: "break-word",
+                background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px",
+              }}>
+                {currentToken}
+              </div>
+              <OutlineButton style={{ flex: "none", height: 30, padding: "0 12px", fontSize: 11.5 }} onClick={copyToken}>
+                {copyStatus || "복사"}
+              </OutlineButton>
+            </div>
+          </div>
         )}
       </Card>
 

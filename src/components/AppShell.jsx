@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext.jsx";
 import { MoonIcon, SunIcon } from "./icons.jsx";
 import { NAV_ITEMS } from "./nav.js";
 import { displayName } from "../lib/profileDisplay.js";
+import { KAKAO_CONTACT_URL } from "../lib/ai.js";
 import Avatar from "./Avatar.jsx";
 import "../styles/shell.css";
 
@@ -46,6 +47,16 @@ export default function AppShell() {
 
       <main className="app-main">
         <Outlet />
+        <div style={{ marginTop: 40, textAlign: "center" }}>
+          <a
+            href={KAKAO_CONTACT_URL}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11, color: "var(--text-sub)", textDecoration: "underline" }}
+          >
+            문의하기
+          </a>
+        </div>
       </main>
 
       <nav className="tabbar">

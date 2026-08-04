@@ -8,7 +8,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { compat, compatLabel, TYPE_META } from "../lib/personality.js";
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
-import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import Avatar from "../components/Avatar.jsx";
 
@@ -20,7 +20,7 @@ const TABS = [
 ];
 
 const CATEGORIES = ["머더미스터리", "방탈출", "보드게임", "기타"];
-const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime: "" };
+const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "" };
 
 export default function GroupDetail() {
   const { groupId } = useParams();
@@ -95,16 +95,25 @@ export default function GroupDetail() {
           eyebrow="MEETUP"
           title={group.name}
           action={
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", maxWidth: "100%" }}>
               <div style={{ display: "flex" }}>
-                {members.map((m) => (
+                {members.slice(0, 6).map((m) => (
                   <div key={m.id} title={displayName(m)} style={{ marginLeft: -8 }}>
                     <Avatar profile={m} size={32} style={{ fontSize: 14, border: "2px solid var(--bg)" }} />
                   </div>
                 ))}
+                {members.length > 6 && (
+                  <div style={{
+                    marginLeft: -8, width: 32, height: 32, borderRadius: "50%", background: "var(--bg-sub)",
+                    border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, color: "var(--text-sub)", flex: "none",
+                  }}>
+                    +{members.length - 6}
+                  </div>
+                )}
               </div>
               <OutlineButton
-                style={{ height: 32, padding: "0 12px", fontSize: 12 }}
+                style={{ height: 32, padding: "0 12px", fontSize: 12, whiteSpace: "nowrap" }}
                 onClick={() => { setNameDraft(group.name); setEditingName(true); }}
               >
                 편집
@@ -172,7 +181,7 @@ export default function GroupDetail() {
       </div>
 
       {tab === "schedules" && <SchedulesTab group={group} profile={profile} />}
-      {tab === "availability" && <AvailabilityTab group={group} members={members} profile={profile} />}
+      {tab === "availability" && <AvailabilityTab members={members} profile={profile} />}
       {tab === "compat" && <CompatTab members={members} />}
       {tab === "unplayed" && <UnplayedTab members={members} />}
     </div>
@@ -249,6 +258,7 @@ export function AnnouncementBanner({ group, profile }) {
 }
 
 function SchedulesTab({ group, profile }) {
+  const { setProfile } = useAuth();
   const [items, setItems] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
@@ -287,7 +297,10 @@ function SchedulesTab({ group, profile }) {
 
   function startEdit(s) {
     setEditingId(s.id);
-    setForm({ category: s.category || CATEGORIES[0], title: s.title, location: s.location, datetime: s.datetime });
+    setForm({
+      category: s.category || CATEGORIES[0], title: s.title, location: s.location,
+      datetime: s.datetime, endDatetime: s.endDatetime || "",
+    });
     setShowForm(true);
   }
 
@@ -317,9 +330,20 @@ function SchedulesTab({ group, profile }) {
     load();
   }
 
-  async function vote(scheduleId, current) {
-    const next = current === "yes" ? "no" : "yes";
-    await updateDoc(doc(db, "schedules", scheduleId), { [`attendees.${profile.id}`]: next });
+  async function vote(schedule, currentStatus) {
+    const next = currentStatus === "yes" ? "no" : "yes";
+    await updateDoc(doc(db, "schedules", schedule.id), { [`attendees.${profile.id}`]: next });
+
+    // 참석하기로 하면, 겹치는 날짜를 "가능일"에서 자동으로 빼서 다른 모임 후보에 안 잡히게 함
+    if (next === "yes" && schedule.datetime) {
+      const dateKey = schedule.datetime.slice(0, 10);
+      const availableDates = profile.availableDates || [];
+      if (availableDates.includes(dateKey)) {
+        const nextDates = availableDates.filter((d) => d !== dateKey);
+        await updateDoc(doc(db, "users", profile.id), { availableDates: nextDates });
+        setProfile((p) => ({ ...p, availableDates: nextDates }));
+      }
+    }
     load();
   }
 
@@ -363,8 +387,14 @@ function SchedulesTab({ group, profile }) {
               onChange={(e) => setForm({ ...form, title: e.target.value })} style={inputStyle} />
             <input required placeholder="장소" value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
-            <input required type="datetime-local" value={form.datetime}
-              onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
+            <Fld label="시작 시각">
+              <input required type="datetime-local" value={form.datetime}
+                onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
+            </Fld>
+            <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
+              <input type="datetime-local" value={form.endDatetime} min={form.datetime}
+                onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
+            </Fld>
             <PrimaryButton type="submit">{editingId ? "수정 저장" : "등록하기"}</PrimaryButton>
           </form>
         </Card>
@@ -378,7 +408,9 @@ function SchedulesTab({ group, profile }) {
       ) : items.length === 0 ? (
         <Card><EmptyState>아직 등록된 일정이 없어요.</EmptyState></Card>
       ) : (
-        items.map((s) => {
+      <ScrollBox maxHeight={520}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {items.map((s) => {
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
           const isHost = s.hostId === profile.id;
@@ -392,12 +424,12 @@ function SchedulesTab({ group, profile }) {
                 )}
                 <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{s.title}</div>
                 <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
-                  {formatDate(s.datetime)} · {s.location} · 주최 {s.hostName}
+                  {formatDate(s.datetime)}{s.endDatetime && ` ~ ${formatDate(s.endDatetime)}`} · {s.location} · 주최 {s.hostName}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참석 {yesCount}명</div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <OutlineButton onClick={() => vote(s.id, mine)}>
+                <OutlineButton onClick={() => vote(s, mine)}>
                   {mine === "yes" ? "참석 취소" : "참석하기"}
                 </OutlineButton>
                 <OutlineButton style={{ height: 44, padding: "0 14px" }} onClick={() => startEdit(s)}>수정</OutlineButton>
@@ -412,14 +444,17 @@ function SchedulesTab({ group, profile }) {
               </div>
             </Card>
           );
-        })
+        })}
+        </div>
+      </ScrollBox>
       )}
     </div>
   );
 }
 
-function AvailabilityTab({ group, members, profile }) {
-  const myDates = useMemo(() => new Set(group.availability?.[profile.id]?.dates || []), [group.availability, profile.id]);
+function AvailabilityTab({ members, profile }) {
+  const { setProfile } = useAuth();
+  const myDates = useMemo(() => new Set(profile.availableDates || []), [profile.availableDates]);
   const [selected, setSelected] = useState(myDates);
   const [saving, setSaving] = useState(false);
 
@@ -435,31 +470,32 @@ function AvailabilityTab({ group, members, profile }) {
 
   async function save() {
     setSaving(true);
-    const nextAvailability = {
-      ...(group.availability || {}),
-      [profile.id]: { dates: Array.from(selected) },
-    };
-    await updateDoc(doc(db, "groups", group.id), { availability: nextAvailability });
+    const dates = Array.from(selected);
+    await updateDoc(doc(db, "users", profile.id), { availableDates: dates });
+    setProfile((p) => ({ ...p, availableDates: dates }));
     setSaving(false);
   }
 
   const candidates = useMemo(() => {
     const counts = {};
-    Object.values(group.availability || {}).forEach(({ dates }) => {
-      (dates || []).forEach((d) => { counts[d] = (counts[d] || 0) + 1; });
+    members.forEach((m) => {
+      (m.availableDates || []).forEach((d) => { counts[d] = (counts[d] || 0) + 1; });
     });
     return Object.entries(counts)
       .filter(([, c]) => c >= 2)
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, 5);
-  }, [group.availability]);
+  }, [members]);
 
   const totalMembers = members.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Card>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>내가 가능한 날짜를 선택하세요</div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>내가 가능한 날짜를 선택하세요</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginBottom: 10 }}>
+          한 번 설정하면 내가 속한 모든 모임에 공통으로 적용돼요. 참석하기로 한 일정은 자동으로 빠져요.
+        </div>
         <MonthCalendar markedDates={selected} onSelectDate={toggle} />
         <PrimaryButton style={{ marginTop: 14, width: "100%" }} onClick={save} disabled={saving}>
           {saving ? "저장 중…" : "가능일 저장"}
@@ -564,10 +600,12 @@ function UnplayedTab({ members }) {
         return new Set(snap.docs.map((d) => (d.data().scenarioName || "").trim().toLowerCase()));
       })
     );
-    const unplayed = scenarios.filter((s) => {
-      const key = s.title.trim().toLowerCase();
-      return playedSets.some((set) => !set.has(key));
-    });
+    const unplayed = scenarios
+      .filter((s) => {
+        const key = s.title.trim().toLowerCase();
+        return playedSets.some((set) => !set.has(key));
+      })
+      .sort((a, b) => a.title.localeCompare(b.title, "ko"));
     setResults(unplayed);
     setLoading(false);
   }
@@ -588,21 +626,26 @@ function UnplayedTab({ members }) {
         results.length === 0 ? (
           <Card><EmptyState>이 모임은 우리 DB에 있는 시나리오를 전부 해봤어요! 🎉</EmptyState></Card>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {results.map((s) => (
-              <Card key={s.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                    {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
-                  </div>
-                </div>
-                <Link to="/records" state={{ scenarioName: s.title }}>
-                  <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>+ 기록에 추가</OutlineButton>
-                </Link>
-              </Card>
-            ))}
-          </div>
+          <>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {results.length}개 (가나다순)</div>
+            <ScrollBox maxHeight={480}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {results.map((s) => (
+                  <Card key={s.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                        {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <Link to="/records" state={{ scenarioName: s.title }}>
+                      <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>+ 기록에 추가</OutlineButton>
+                    </Link>
+                  </Card>
+                ))}
+              </div>
+            </ScrollBox>
+          </>
         )
       )}
     </div>
@@ -621,7 +664,16 @@ function formatDateOnly(key) {
   return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
 }
 
+function Fld({ label, children }) {
+  return (
+    <div>
+      <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 5 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 const inputStyle = {
   padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)",
-  background: "var(--bg)", color: "var(--text)", fontSize: 13,
+  background: "var(--bg)", color: "var(--text)", fontSize: 13, width: "100%",
 };

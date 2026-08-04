@@ -4,7 +4,9 @@ import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { AI_FREE_LIMIT } from "../lib/ai.js";
 import Avatar from "../components/Avatar.jsx";
-import { Card, EmptyState, PageHeader } from "../components/ui.jsx";
+import { Card, EmptyState, PageHeader, ScrollBox } from "../components/ui.jsx";
+
+const SCENARIO_EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "" };
 
 export default function Admin() {
   const [users, setUsers] = useState(null);
@@ -12,6 +14,11 @@ export default function Admin() {
 
   const [pendingScenarios, setPendingScenarios] = useState(null);
   const [scenarioBusyId, setScenarioBusyId] = useState(null);
+
+  const [approvedScenarios, setApprovedScenarios] = useState(null);
+  const [scenarioSearch, setScenarioSearch] = useState("");
+  const [editingScenarioId, setEditingScenarioId] = useState(null);
+  const [scenarioForm, setScenarioForm] = useState(SCENARIO_EMPTY_FORM);
 
   async function loadUsers() {
     const snap = await getDocs(query(collection(db, "users"), orderBy("createdAt", "desc")));
@@ -23,10 +30,51 @@ export default function Admin() {
     setPendingScenarios(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 
+  async function loadApprovedScenarios() {
+    const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
+    setApprovedScenarios(
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.title.localeCompare(b.title, "ko"))
+    );
+  }
+
   useEffect(() => {
     loadUsers();
     loadPendingScenarios();
+    loadApprovedScenarios();
   }, []);
+
+  function startEditScenario(s) {
+    setEditingScenarioId(s.id);
+    setScenarioForm({
+      title: s.title || "", publisher: s.publisher || "", playerCount: s.playerCount || "",
+      duration: s.duration || "", description: s.description || "",
+    });
+  }
+
+  async function saveScenario(e) {
+    e.preventDefault();
+    setScenarioBusyId(editingScenarioId);
+    await updateDoc(doc(db, "scenarios", editingScenarioId), scenarioForm);
+    setApprovedScenarios((list) =>
+      list
+        .map((s) => (s.id === editingScenarioId ? { ...s, ...scenarioForm } : s))
+        .sort((a, b) => a.title.localeCompare(b.title, "ko"))
+    );
+    setEditingScenarioId(null);
+    setScenarioBusyId(null);
+  }
+
+  async function deleteApprovedScenario(s) {
+    if (!window.confirm(`"${s.title}" 시나리오를 정말 삭제할까요? 되돌릴 수 없어요.`)) return;
+    setScenarioBusyId(s.id);
+    await deleteDoc(doc(db, "scenarios", s.id));
+    setApprovedScenarios((list) => list.filter((x) => x.id !== s.id));
+    setScenarioBusyId(null);
+  }
+
+  const filteredApprovedScenarios = (approvedScenarios || []).filter((s) =>
+    s.title.toLowerCase().includes(scenarioSearch.trim().toLowerCase())
+  );
 
   async function toggleUnlimited(user) {
     setBusyId(user.id);
@@ -48,6 +96,9 @@ export default function Admin() {
     setScenarioBusyId(s.id);
     await updateDoc(doc(db, "scenarios", s.id), { status: "approved" });
     setPendingScenarios((list) => list.filter((x) => x.id !== s.id));
+    setApprovedScenarios((list) =>
+      [...(list || []), { ...s, status: "approved" }].sort((a, b) => a.title.localeCompare(b.title, "ko"))
+    );
     setScenarioBusyId(null);
   }
 
@@ -79,7 +130,8 @@ export default function Admin() {
         ) : users.length === 0 ? (
           <EmptyState>가입한 유저가 없어요.</EmptyState>
         ) : (
-          users.map((u) => (
+          <ScrollBox maxHeight={420}>
+          {users.map((u) => (
             <div
               key={u.id}
               style={{
@@ -123,7 +175,8 @@ export default function Admin() {
                 </button>
               )}
             </div>
-          ))
+          ))}
+          </ScrollBox>
         )}
       </Card>
 
@@ -136,7 +189,8 @@ export default function Admin() {
         ) : pendingScenarios.length === 0 ? (
           <EmptyState>대기 중인 요청이 없어요.</EmptyState>
         ) : (
-          pendingScenarios.map((s) => (
+          <ScrollBox maxHeight={420}>
+          {pendingScenarios.map((s) => (
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
               <div style={{ flex: "1 1 160px", minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
@@ -159,9 +213,98 @@ export default function Admin() {
                 거절
               </button>
             </div>
-          ))
+          ))}
+          </ScrollBox>
+        )}
+      </Card>
+
+      <Card style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>
+          승인된 시나리오 관리 ({approvedScenarios?.length ?? "…"}건)
+        </div>
+        {approvedScenarios === null ? (
+          <span style={{ fontSize: 12, color: "var(--text-sub)" }}>불러오는 중…</span>
+        ) : approvedScenarios.length === 0 ? (
+          <EmptyState>승인된 시나리오가 없어요.</EmptyState>
+        ) : (
+          <>
+            <input
+              placeholder="시나리오 이름으로 검색"
+              value={scenarioSearch}
+              onChange={(e) => setScenarioSearch(e.target.value)}
+              style={{ ...scenarioInputStyle, marginBottom: 8 }}
+            />
+            <ScrollBox maxHeight={420}>
+              {filteredApprovedScenarios.map((s) =>
+                editingScenarioId === s.id ? (
+                  <form
+                    key={s.id}
+                    onSubmit={saveScenario}
+                    style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0", borderBottom: "1px solid var(--border)" }}
+                  >
+                    <input required placeholder="시나리오 이름" value={scenarioForm.title}
+                      onChange={(e) => setScenarioForm({ ...scenarioForm, title: e.target.value })} style={scenarioInputStyle} />
+                    <input placeholder="제작사" value={scenarioForm.publisher}
+                      onChange={(e) => setScenarioForm({ ...scenarioForm, publisher: e.target.value })} style={scenarioInputStyle} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input placeholder="인원수" value={scenarioForm.playerCount}
+                        onChange={(e) => setScenarioForm({ ...scenarioForm, playerCount: e.target.value })} style={{ ...scenarioInputStyle, flex: 1 }} />
+                      <input placeholder="플레이 시간" value={scenarioForm.duration}
+                        onChange={(e) => setScenarioForm({ ...scenarioForm, duration: e.target.value })} style={{ ...scenarioInputStyle, flex: 1 }} />
+                    </div>
+                    <textarea placeholder="설명" rows={2} value={scenarioForm.description}
+                      onChange={(e) => setScenarioForm({ ...scenarioForm, description: e.target.value })} style={{ ...scenarioInputStyle, resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => setEditingScenarioId(null)}
+                        style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: "var(--text-sub)" }}
+                      >
+                        취소
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={scenarioBusyId === s.id}
+                        style={{ height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--bg)" }}
+                      >
+                        {scenarioBusyId === s.id ? "저장 중…" : "저장"}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{s.title}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)", overflowWrap: "break-word" }}>
+                        {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ") || "추가 정보 없음"}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => startEditScenario(s)}
+                      disabled={scenarioBusyId === s.id}
+                      style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: "var(--text)" }}
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => deleteApprovedScenario(s)}
+                      disabled={scenarioBusyId === s.id}
+                      style={{ flex: "none", height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--danger)", background: "transparent", color: "var(--danger)" }}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                )
+              )}
+            </ScrollBox>
+          </>
         )}
       </Card>
     </div>
   );
 }
+
+const scenarioInputStyle = {
+  padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--border)",
+  background: "var(--bg)", color: "var(--text)", fontSize: 12.5,
+};

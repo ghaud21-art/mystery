@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
-import { Card, EmptyState, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
-const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true };
+const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false };
 
 export default function Records() {
   const { profile } = useAuth();
@@ -16,6 +16,7 @@ export default function Records() {
     location.state?.scenarioName ? { ...EMPTY_FORM, scenarioName: location.state.scenarioName } : EMPTY_FORM
   );
   const [showForm, setShowForm] = useState(!!location.state?.scenarioName);
+  const [editingId, setEditingId] = useState(null);
   const [revealed, setRevealed] = useState({});
   const [scenarios, setScenarios] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -51,18 +52,44 @@ export default function Records() {
     load();
   }, [profile?.id]);
 
-  async function addRecord(e) {
+  function startCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setShowForm(true);
+  }
+
+  function startEdit(r) {
+    setEditingId(r.id);
+    setForm({
+      scenarioName: r.scenarioName, character: r.character || "", rating: r.rating || 0,
+      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite,
+    });
+    setShowForm(true);
+  }
+
+  async function submitForm(e) {
     e.preventDefault();
     const rating = Number(form.rating);
-    await addDoc(collection(db, "records"), {
-      ...form,
-      rating: rating > 0 ? rating : null,
-      userId: profile.id,
-      date: new Date().toISOString().slice(0, 10),
-      createdAt: serverTimestamp(),
-    });
+    const payload = { ...form, rating: rating > 0 ? rating : null };
+    if (editingId) {
+      await updateDoc(doc(db, "records", editingId), payload);
+    } else {
+      await addDoc(collection(db, "records"), {
+        ...payload,
+        userId: profile.id,
+        date: new Date().toISOString().slice(0, 10),
+        createdAt: serverTimestamp(),
+      });
+    }
     setForm(EMPTY_FORM);
+    setEditingId(null);
     setShowForm(false);
+    load();
+  }
+
+  async function removeRecord(id) {
+    if (!window.confirm("이 기록을 삭제할까요?")) return;
+    await deleteDoc(doc(db, "records", id));
     load();
   }
 
@@ -71,12 +98,12 @@ export default function Records() {
       <PageHeader
         eyebrow="CASE LOG"
         title="플레이 기록"
-        action={<PrimaryButton onClick={() => setShowForm((s) => !s)}>{showForm ? "닫기" : "+ 기록 추가"}</PrimaryButton>}
+        action={<PrimaryButton onClick={() => (showForm ? setShowForm(false) : startCreate())}>{showForm ? "닫기" : "+ 기록 추가"}</PrimaryButton>}
       />
 
       {showForm && (
         <Card style={{ marginBottom: 20 }}>
-          <form onSubmit={addRecord} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <form onSubmit={submitForm} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ position: "relative" }}>
               <input
                 required
@@ -125,7 +152,11 @@ export default function Records() {
               <input type="checkbox" checked={form.spoiler} onChange={(e) => setForm({ ...form, spoiler: e.target.checked })} />
               역할/캐릭터를 스포일러로 블러 처리
             </label>
-            <PrimaryButton type="submit">기록 저장</PrimaryButton>
+            <label style={{ fontSize: 12.5, color: "var(--accent)", display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+              <input type="checkbox" checked={form.favorite} onChange={(e) => setForm({ ...form, favorite: e.target.checked })} />
+              ⭐ 인생머미 (추천 카드에 이름이 표시돼요)
+            </label>
+            <PrimaryButton type="submit">{editingId ? "수정 저장" : "기록 저장"}</PrimaryButton>
           </form>
         </Card>
       )}
@@ -138,11 +169,14 @@ export default function Records() {
       ) : records.length === 0 ? (
         <Card><EmptyState>아직 기록이 없어요.</EmptyState></Card>
       ) : (
+        <ScrollBox maxHeight={640}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
           {records.map((r) => (
             <Card key={r.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <div style={{ fontSize: 14.5, fontWeight: 600, overflowWrap: "break-word" }}>{r.scenarioName}</div>
+                <div style={{ fontSize: 14.5, fontWeight: 600, overflowWrap: "break-word" }}>
+                  {r.favorite && "⭐ "}{r.scenarioName}
+                </div>
                 {r.rating ? (
                   <span style={{ fontSize: 12, color: "var(--accent)", letterSpacing: 1, whiteSpace: "nowrap" }}>
                     {"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}
@@ -162,9 +196,19 @@ export default function Records() {
                 </div>
               )}
               {r.note && <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--text-sub)" }}>{r.note}</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <OutlineButton style={{ flex: 1, height: 32, fontSize: 12 }} onClick={() => startEdit(r)}>수정</OutlineButton>
+                <OutlineButton
+                  style={{ flex: 1, height: 32, fontSize: 12, borderColor: "var(--danger)", color: "var(--danger)" }}
+                  onClick={() => removeRecord(r.id)}
+                >
+                  삭제
+                </OutlineButton>
+              </div>
             </Card>
           ))}
         </div>
+        </ScrollBox>
       )}
     </div>
   );

@@ -17,7 +17,7 @@ export default function StyleResult() {
     setAnalyzeError("");
     setAnalyzing(true);
     try {
-      const analysis = await analyzeStyle(profile, {});
+      const analysis = await analyzeStyle(profile);
       setProfile((p) => ({ ...p, styleAnalysis: analysis }));
     } catch (err) {
       setAnalyzeError(err.message || "분석에 실패했어요.");
@@ -157,7 +157,7 @@ export default function StyleResult() {
           <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-sub)" }}>AI 강점·약점 분석</div>
             <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-              객관식 결과와 <Link to="/friends" style={{ textDecoration: "underline" }}>친구 궁합 메모</Link>를 함께 분석해요.
+              객관식 결과와 성향 테스트에서 남긴 주관식 답변(나만 볼 수 있어요)을 함께 분석해요.
               나중에 궁합 매칭에도 참고돼요.
             </div>
 

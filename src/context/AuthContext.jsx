@@ -14,10 +14,10 @@ const DEFAULT_PROFILE_FIELDS = {
   style: null,
   style2: null,
   friends: [],
-  compatNotes: {},
   styleAnalysis: null,
   aiUsageCount: 0,
   aiUnlimited: false,
+  availableDates: [],
 };
 
 async function ensureUserProfile(user) {

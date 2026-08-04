@@ -80,10 +80,12 @@ export default function Profile() {
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
               <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginBottom: 6 }}>추리 성향</div>
               {main ? (
-                <Link to="/style-result" style={{ display: "block" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{main.icon} {main.title}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 2 }}>결과 다시 보기 →</div>
-                </Link>
+                  <Link to="/style-result" style={{ fontSize: 11.5, color: "var(--accent)", whiteSpace: "nowrap" }}>
+                    결과 다시 보기 →
+                  </Link>
+                </div>
               ) : (
                 <Link to="/style-test"><PrimaryButton>테스트 시작하기</PrimaryButton></Link>
               )}
@@ -107,7 +109,6 @@ export default function Profile() {
                 로그아웃
               </OutlineButton>
             </div>
-            <RecommendationCard profile={profile} main={main} />
           </>
         ) : (
           <form onSubmit={save} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -197,9 +198,12 @@ function RecommendationCard({ profile, main }) {
       const snap = await getDocs(
         query(collection(db, "records"), where("userId", "==", profile.id), orderBy("date", "desc"))
       );
-      setRecords(snap.docs.map((d) => d.data().scenarioName).filter(Boolean));
+      setRecords(snap.docs.map((d) => d.data()));
     })();
   }, [profile.id]);
+
+  const favorites = (records || []).filter((r) => r.favorite && r.scenarioName);
+  const otherCount = (records || []).length - favorites.length;
 
   async function saveImage() {
     setBusy("saving");
@@ -269,11 +273,17 @@ function RecommendationCard({ profile, main }) {
             <div style={{ fontSize: 12, color: "var(--text-sub)" }}>아직 플레이 기록이 없어요.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {records.slice(0, 8).map((title, i) => (
-                <div key={i} style={{ fontSize: 12.5 }}>· {title}</div>
-              ))}
-              {records.length > 8 && (
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>외 {records.length - 8}편</div>
+              {favorites.length === 0 ? (
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                  아직 ⭐인생머미로 표시한 기록이 없어요 (플레이 기록에서 체크할 수 있어요)
+                </div>
+              ) : (
+                favorites.map((r, i) => (
+                  <div key={i} style={{ fontSize: 12.5 }}>⭐ {r.scenarioName}</div>
+                ))
+              )}
+              {otherCount > 0 && (
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>그 외 {otherCount}편</div>
               )}
             </div>
           )}

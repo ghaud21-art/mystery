@@ -100,6 +100,15 @@ export function PageHeader({ eyebrow, title, action }) {
   );
 }
 
+// 항목이 많아질 수 있는 목록을 감싸서 페이지 전체가 무한정 길어지지 않게 함
+export function ScrollBox({ children, maxHeight = 480, style }) {
+  return (
+    <div style={{ maxHeight, overflowY: "auto", paddingRight: 4, ...style }}>
+      {children}
+    </div>
+  );
+}
+
 export function EmptyState({ children }) {
   return (
     <div style={{ textAlign: "center", color: "var(--text-sub)", padding: "48px 0", fontSize: 13.5 }}>
