@@ -20,7 +20,7 @@ const TABS = [
 ];
 
 const CATEGORIES = ["머더미스터리", "방탈출", "보드게임", "기타"];
-const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "" };
+const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "", negotiating: false };
 
 export default function GroupDetail() {
   const { groupId } = useParams();
@@ -300,18 +300,37 @@ function SchedulesTab({ group, profile, members }) {
     setEditingId(s.id);
     setForm({
       category: s.category || CATEGORIES[0], title: s.title, location: s.location,
-      datetime: s.datetime, endDatetime: s.endDatetime || "",
+      datetime: s.datetime || "", endDatetime: s.endDatetime || "",
+      negotiating: (s.status || "confirmed") === "negotiating",
     });
     setShowForm(true);
   }
 
+  function confirmWithDate(schedule, dateKey) {
+    setEditingId(schedule.id);
+    setForm({
+      category: schedule.category || CATEGORIES[0], title: schedule.title, location: schedule.location,
+      datetime: `${dateKey}T19:00`, endDatetime: "", negotiating: false,
+    });
+    setShowForm(true);
+    setCandidatesFor(null);
+  }
+
   async function submitForm(e) {
     e.preventDefault();
+    const payload = {
+      category: form.category,
+      title: form.title,
+      location: form.location,
+      datetime: form.negotiating ? "" : form.datetime,
+      endDatetime: form.negotiating ? "" : form.endDatetime,
+      status: form.negotiating ? "negotiating" : "confirmed",
+    };
     if (editingId) {
-      await updateDoc(doc(db, "schedules", editingId), { ...form });
+      await updateDoc(doc(db, "schedules", editingId), payload);
     } else {
       await addDoc(collection(db, "schedules"), {
-        ...form,
+        ...payload,
         groupId: group.id,
         hostId: profile.id,
         hostName: displayName(profile),
@@ -401,14 +420,31 @@ function SchedulesTab({ group, profile, members }) {
               onChange={(e) => setForm({ ...form, title: e.target.value })} style={inputStyle} />
             <input required placeholder="장소" value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
-            <Fld label="시작 시각">
-              <input required type="datetime-local" value={form.datetime}
-                onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
-            </Fld>
-            <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
-              <input type="datetime-local" value={form.endDatetime} min={form.datetime}
-                onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
-            </Fld>
+
+            <label style={{
+              display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-sub)",
+              padding: "10px 12px", borderRadius: 8, background: "var(--bg-sub)",
+            }}>
+              <input
+                type="checkbox"
+                checked={form.negotiating}
+                onChange={(e) => setForm({ ...form, negotiating: e.target.checked, datetime: "", endDatetime: "" })}
+              />
+              일정 협의로 등록 (날짜는 나중에 정해요) — 사람들 참여 의향과 가능일을 모아서 확정할 수 있어요
+            </label>
+
+            {!form.negotiating && (
+              <>
+                <Fld label="시작 시각">
+                  <input required type="datetime-local" value={form.datetime}
+                    onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
+                </Fld>
+                <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
+                  <input type="datetime-local" value={form.endDatetime} min={form.datetime}
+                    onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
+                </Fld>
+              </>
+            )}
             <PrimaryButton type="submit">{editingId ? "수정 저장" : "등록하기"}</PrimaryButton>
           </form>
         </Card>
@@ -425,31 +461,42 @@ function SchedulesTab({ group, profile, members }) {
       <ScrollBox maxHeight={520}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {items.map((s) => {
+          const isNegotiating = (s.status || "confirmed") === "negotiating";
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
           const isHost = s.hostId === profile.id;
-          const candidatesOpen = candidatesFor === s.id;
+          const candidatesOpen = isNegotiating || candidatesFor === s.id;
           const { candidates, total } = candidatesOpen ? attendeeCandidates(s) : { candidates: [], total: 0 };
           return (
             <Card key={s.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <div>
-                  {s.category && (
+                  {isNegotiating ? (
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text-sub)", background: "var(--bg-sub)", padding: "2px 8px", borderRadius: 999 }}>
+                      📋 일정 협의 중
+                    </span>
+                  ) : s.category && (
                     <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--accent)", background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 999 }}>
                       {s.category}
                     </span>
                   )}
                   <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{s.title}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
-                    {formatDate(s.datetime)}{s.endDatetime && ` ~ ${formatDate(s.endDatetime)}`} · {s.location} · 주최 {s.hostName}
+                    {isNegotiating
+                      ? `날짜 미정 · ${s.location} · 주최 ${s.hostName}`
+                      : `${formatDate(s.datetime)}${s.endDatetime ? ` ~ ${formatDate(s.endDatetime)}` : ""} · ${s.location} · 주최 ${s.hostName}`}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참석 {yesCount}명</div>
+                  <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>
+                    {isNegotiating ? "참여 의향" : "참석"} {yesCount}명
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <OutlineButton onClick={() => vote(s, mine)}>
-                    {mine === "yes" ? "참석 취소" : "참석하기"}
+                    {mine === "yes" ? (isNegotiating ? "의향 취소" : "참석 취소") : (isNegotiating ? "참여 의향 있어요" : "참석하기")}
                   </OutlineButton>
-                  <OutlineButton style={{ height: 44, padding: "0 14px" }} onClick={() => startEdit(s)}>수정</OutlineButton>
+                  <OutlineButton style={{ height: 44, padding: "0 14px" }} onClick={() => startEdit(s)}>
+                    {isNegotiating ? "날짜 확정/수정" : "수정"}
+                  </OutlineButton>
                   {isHost && (
                     <OutlineButton
                       style={{ height: 44, padding: "0 14px", borderColor: "var(--danger)", color: "var(--danger)" }}
@@ -461,28 +508,40 @@ function SchedulesTab({ group, profile, members }) {
                 </div>
               </div>
 
-              {yesCount >= 2 && (
+              {(isNegotiating || yesCount >= 2) && (
                 <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => setCandidatesFor(candidatesOpen ? null : s.id)}
-                    style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", padding: 0 }}
-                  >
-                    {candidatesOpen ? "참석자 날짜 후보 접기 ▲" : "참석자 기준 날짜 후보 보기 ▼"}
-                  </button>
+                  {!isNegotiating && (
+                    <button
+                      type="button"
+                      onClick={() => setCandidatesFor(candidatesFor === s.id ? null : s.id)}
+                      style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", padding: 0 }}
+                    >
+                      {candidatesFor === s.id ? "참석자 날짜 후보 접기 ▲" : "참석자 기준 날짜 후보 보기 ▼"}
+                    </button>
+                  )}
+                  {isNegotiating && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-sub)", marginBottom: 6 }}>
+                      참여 의향을 표시한 사람들의 날짜 후보
+                    </div>
+                  )}
                   {candidatesOpen && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: isNegotiating ? 0 : 8 }}>
                       {candidates.length === 0 ? (
                         <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
-                          참석자들이 아직 &ldquo;가능일&rdquo;을 설정하지 않았어요.
+                          참여 의향을 표시한 사람들이 아직 &ldquo;가능일&rdquo;을 설정하지 않았어요.
                         </div>
                       ) : (
                         candidates.map(([date, count]) => (
-                          <div key={date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                          <div key={date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: "var(--bg-sub)", flexWrap: "wrap", gap: 8 }}>
                             <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDateOnly(date)}</span>
                             <span style={{ fontSize: 12, color: count === total ? "var(--success)" : "var(--text-sub)" }}>
-                              참석자 {count}/{total}명 가능{count === total ? " · 전원 가능! 🎉" : ""}
+                              {count}/{total}명 가능{count === total ? " · 전원 가능! 🎉" : ""}
                             </span>
+                            {isNegotiating && (
+                              <OutlineButton style={{ height: 28, padding: "0 10px", fontSize: 11.5, flex: "none" }} onClick={() => confirmWithDate(s, date)}>
+                                이 날짜로 확정
+                              </OutlineButton>
+                            )}
                           </div>
                         ))
                       )}
