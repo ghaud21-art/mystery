@@ -4,6 +4,7 @@ import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
+import { parsePlayerRange, PLAYER_TABS } from "../lib/scenarioUtils.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline" };
@@ -16,6 +17,7 @@ export default function ScenarioSearch() {
   const { profile } = useAuth();
   const [scenarios, setScenarios] = useState(null);
   const [category, setCategory] = useState("offline");
+  const [playerTab, setPlayerTab] = useState("all");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -31,11 +33,17 @@ export default function ScenarioSearch() {
   const filtered = useMemo(() => {
     if (!scenarios) return [];
     const q = search.trim().toLowerCase();
+    const tab = PLAYER_TABS.find((t) => t.key === playerTab);
     const list = scenarios
       .filter((s) => (s.category || "offline") === category)
+      .filter((s) => {
+        if (playerTab === "all") return true;
+        const r = parsePlayerRange(s.playerCount);
+        return r ? tab.test(r) : false;
+      })
       .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
     return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search, category]);
+  }, [scenarios, search, category, playerTab]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -88,6 +96,24 @@ export default function ScenarioSearch() {
           ))}
         </div>
 
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {PLAYER_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setPlayerTab(t.key)}
+              style={{
+                flex: "1 1 60px", height: 32, borderRadius: 8, fontSize: 12,
+                border: `1.5px solid ${playerTab === t.key ? "var(--accent)" : "var(--border)"}`,
+                background: playerTab === t.key ? "var(--accent-dim)" : "transparent",
+                color: playerTab === t.key ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <input
           placeholder="시나리오 이름으로 검색"
           value={search}
@@ -119,7 +145,7 @@ export default function ScenarioSearch() {
             <input placeholder="제작사 (선택)" value={form.publisher}
               onChange={(e) => setForm({ ...form, publisher: e.target.value })} style={inputStyle} />
             <div style={{ display: "flex", gap: 8 }}>
-              <input placeholder="인원수 (예: 4-6인)" value={form.playerCount}
+              <input placeholder="인원수 (예: 4~6명)" value={form.playerCount}
                 onChange={(e) => setForm({ ...form, playerCount: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
               <input placeholder="플레이 시간 (예: 3시간)" value={form.duration}
                 onChange={(e) => setForm({ ...form, duration: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
@@ -149,7 +175,7 @@ export default function ScenarioSearch() {
                     <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
-                      <InfoRow icon="👥" value={s.playerCount ? `${s.playerCount} 인원` : "인원 미상"} />
+                      <InfoRow icon="👥" value={s.playerCount || "인원 미상"} />
                       <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
                     </div>
                     <Link to="/records" state={{ scenarioName: s.title }}>

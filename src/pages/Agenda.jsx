@@ -4,6 +4,7 @@ import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where } f
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { enableReminderNotifications } from "../lib/notifications.js";
+import { expandDateRange } from "../lib/dateUtils.js";
 import { Card, EmptyState, OutlineButton, PageHeader } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 
@@ -73,14 +74,7 @@ export default function Agenda() {
     const set = new Set();
     (items || []).forEach((s) => {
       if (s.attendees?.[profile.id] !== "yes" || !s.datetime) return;
-      const start = s.datetime.slice(0, 10);
-      const end = s.endDatetime ? s.endDatetime.slice(0, 10) : start;
-      let cursor = new Date(`${start}T00:00:00`);
-      const last = new Date(`${end}T00:00:00`);
-      while (cursor <= last) {
-        set.add(toDateKey(cursor));
-        cursor.setDate(cursor.getDate() + 1);
-      }
+      expandDateRange(s.datetime, s.endDatetime).forEach((k) => set.add(k));
     });
     return set;
   }, [items, profile?.id]);
@@ -154,13 +148,6 @@ export default function Agenda() {
       </Card>
     </div>
   );
-}
-
-function toDateKey(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function formatDate(iso) {

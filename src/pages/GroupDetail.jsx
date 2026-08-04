@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
+import { expandDateRange } from "../lib/dateUtils.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import Avatar from "../components/Avatar.jsx";
@@ -285,7 +286,9 @@ function SchedulesTab({ group, profile, members }) {
   const markedDates = useMemo(() => {
     const set = new Set();
     (items || []).forEach((s) => {
-      if (s.attendees?.[profile.id] === "yes" && s.datetime) set.add(s.datetime.slice(0, 10));
+      if (s.attendees?.[profile.id] === "yes" && s.datetime) {
+        expandDateRange(s.datetime, s.endDatetime).forEach((k) => set.add(k));
+      }
     });
     return set;
   }, [items, profile.id]);
