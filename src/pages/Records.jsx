@@ -259,7 +259,7 @@ export default function Records() {
             placeholder="시나리오 이름·캐릭터·메모로 내 기록 검색"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ ...inputStyle, marginBottom: 14 }}
+            style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 14 }}
           />
           {sortedRecords.length === 0 ? (
             <Card><EmptyState>{search ? "검색 결과가 없어요." : "아직 기록이 없어요."}</EmptyState></Card>
@@ -304,11 +304,13 @@ export default function Records() {
                 </div>
               </EmptyState>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {recordsByDate[selectedDate].map((r) => (
-                  <RecordCard key={r.id} r={r} revealed={revealed} setRevealed={setRevealed} startEdit={startEdit} removeRecord={removeRecord} compact />
-                ))}
-              </div>
+              <ScrollBox maxHeight="clamp(240px, calc(100vh - 420px), 560px)">
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {recordsByDate[selectedDate].map((r) => (
+                    <RecordCard key={r.id} r={r} revealed={revealed} setRevealed={setRevealed} startEdit={startEdit} removeRecord={removeRecord} compact />
+                  ))}
+                </div>
+              </ScrollBox>
             )}
           </Card>
         </div>
