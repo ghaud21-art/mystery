@@ -98,26 +98,31 @@ export default function MonthCalendar({ markedDates = new Set(), onSelectDate, s
               key={key}
               onClick={() => onSelectDate?.(key)}
               style={{
-                minHeight: 74,
+                minHeight: 80,
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
                 borderRadius: 8,
                 padding: "4px 3px",
                 textAlign: "left",
                 display: "flex",
                 flexDirection: "column",
                 gap: 2,
+                overflow: "hidden",
                 border: isSelected ? "1.5px solid var(--accent)" : isToday ? "1px solid var(--border)" : "1px solid transparent",
                 background: isSelected ? "var(--accent-dim)" : "transparent",
               }}
             >
               <span style={{ fontSize: 12, fontWeight: marked ? 700 : 400, color: marked ? "var(--accent)" : "var(--text)" }}>{d}</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, width: "100%" }}>
                 {visible.map((e, idx) => (
                   <span
                     key={idx}
                     style={{
-                      fontSize: 9.5, fontWeight: 600, padding: "1px 4px", borderRadius: 4,
+                      fontSize: 9, fontWeight: 600, padding: "1px 4px", borderRadius: 4,
                       background: e.color || "var(--accent)", color: "#fff",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                      overflow: "hidden", wordBreak: "break-all", lineHeight: 1.2, minWidth: 0,
                     }}
                   >
                     {e.label}
