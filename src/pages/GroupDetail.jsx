@@ -31,6 +31,7 @@ export default function GroupDetail() {
   const [tab, setTab] = useState("schedules");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [friends, setFriends] = useState([]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "groups", groupId), (snap) => {
@@ -46,6 +47,18 @@ export default function GroupDetail() {
       setMembers(docs.filter((d) => d.exists()).map((d) => ({ id: d.id, ...d.data() })));
     })();
   }, [group?.memberIds]);
+
+  useEffect(() => {
+    (async () => {
+      if (!profile?.friends?.length) return;
+      const docs = await Promise.all(profile.friends.map((uid) => getDoc(doc(db, "users", uid))));
+      setFriends(docs.filter((d) => d.exists()).map((d) => ({ id: d.id, ...d.data() })));
+    })();
+  }, [profile?.friends]);
+
+  async function addMember(uid) {
+    await updateDoc(doc(db, "groups", groupId), { memberIds: [...group.memberIds, uid] });
+  }
 
   if (group === null) {
     return <div className="fade-in" style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</div>;
@@ -100,19 +113,43 @@ export default function GroupDetail() {
           }
         />
       ) : (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "16px 0 24px" }}>
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            style={{ ...inputStyle, flex: 1, fontSize: 16, fontWeight: 700 }}
-            autoFocus
-          />
-          <PrimaryButton style={{ height: 40 }} onClick={saveName}>저장</PrimaryButton>
-          <OutlineButton style={{ height: 40 }} onClick={() => setEditingName(false)}>취소</OutlineButton>
-          <OutlineButton style={{ height: 40, borderColor: "var(--danger)", color: "var(--danger)" }} onClick={deleteGroup}>
-            모임 삭제
-          </OutlineButton>
-        </div>
+        <Card style={{ margin: "16px 0 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              style={{ ...inputStyle, flex: "1 1 160px", fontSize: 16, fontWeight: 700 }}
+              autoFocus
+            />
+            <PrimaryButton style={{ height: 40 }} onClick={saveName}>이름 저장</PrimaryButton>
+            <OutlineButton style={{ height: 40 }} onClick={() => setEditingName(false)}>닫기</OutlineButton>
+            <OutlineButton style={{ height: 40, borderColor: "var(--danger)", color: "var(--danger)" }} onClick={deleteGroup}>
+              모임 삭제
+            </OutlineButton>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-sub)", marginBottom: 8 }}>멤버 추가</div>
+            {friends.filter((f) => !group.memberIds.includes(f.id)).length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-sub)" }}>추가할 수 있는 친구가 없어요 (이미 전부 모임에 있거나, 친구가 없어요).</div>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {friends.filter((f) => !group.memberIds.includes(f.id)).map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => addMember(f.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, fontSize: 12.5,
+                      border: "1.5px solid var(--border)", background: "transparent", color: "var(--text)",
+                    }}
+                  >
+                    + {displayAvatar(f) || "🕵️"} {displayName(f)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
       )}
 
       <AnnouncementBanner group={group} profile={profile} />
@@ -553,11 +590,16 @@ function UnplayedTab({ members }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {results.map((s) => (
-              <Card key={s.id} style={{ padding: "12px 16px" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                  {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
+              <Card key={s.id} style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                    {[s.publisher, s.playerCount, s.duration].filter(Boolean).join(" · ")}
+                  </div>
                 </div>
+                <Link to="/records" state={{ scenarioName: s.title }}>
+                  <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>+ 기록에 추가</OutlineButton>
+                </Link>
               </Card>
             ))}
           </div>

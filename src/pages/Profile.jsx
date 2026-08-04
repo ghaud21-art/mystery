@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { doc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { toPng } from "html-to-image";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { TYPE_META } from "../lib/personality.js";
@@ -106,6 +107,7 @@ export default function Profile() {
                 로그아웃
               </OutlineButton>
             </div>
+            <RecommendationCard profile={profile} main={main} />
           </>
         ) : (
           <form onSubmit={save} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -178,6 +180,109 @@ export default function Profile() {
           </form>
         )}
       </Card>
+
+      {!editing && <RecommendationCard profile={profile} main={main} />}
     </div>
+  );
+}
+
+function RecommendationCard({ profile, main }) {
+  const cardRef = useRef(null);
+  const [records, setRecords] = useState(null);
+  const [customText, setCustomText] = useState("");
+  const [busy, setBusy] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(
+        query(collection(db, "records"), where("userId", "==", profile.id), orderBy("date", "desc"))
+      );
+      setRecords(snap.docs.map((d) => d.data().scenarioName).filter(Boolean));
+    })();
+  }, [profile.id]);
+
+  async function saveImage() {
+    setBusy("saving");
+    try {
+      await document.fonts.ready;
+      const rect = cardRef.current.getBoundingClientRect();
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2, width: Math.ceil(rect.width), height: Math.ceil(rect.height), cacheBust: true,
+      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `머더미스터리_추천카드_${displayName(profile)}.png`;
+      a.click();
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <Card style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 600 }}>추천 카드</div>
+      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+        닉네임·추리 성향·플레이 목록을 담은 카드예요. 문구를 더 적고 이미지로 저장해보세요.
+      </div>
+      <textarea
+        placeholder="카드에 추가로 넣을 한마디 (선택)"
+        value={customText}
+        onChange={(e) => setCustomText(e.target.value)}
+        rows={2}
+        style={{
+          padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)",
+          background: "var(--bg)", color: "var(--text)", fontSize: 13, resize: "vertical",
+        }}
+      />
+
+      <div
+        ref={cardRef}
+        style={{
+          background: "linear-gradient(165deg,var(--bg-sub),var(--card))", border: "1px solid var(--accent)",
+          borderRadius: 16, padding: "24px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+        }}
+      >
+        <Avatar profile={profile} size={64} style={{ fontSize: 28 }} />
+        <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{displayName(profile)}</div>
+        {main && (
+          <span style={{
+            display: "inline-flex", gap: 4, padding: "4px 12px", borderRadius: 999,
+            border: `1px solid var(--type-${main.cssVar})`, color: `var(--type-${main.cssVar})`,
+            fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+          }}>
+            {main.icon} {main.title}
+          </span>
+        )}
+        {customText && (
+          <div style={{ fontSize: 12.5, color: "var(--text-sub)", fontStyle: "italic", textAlign: "center" }}>
+            &ldquo;{customText}&rdquo;
+          </div>
+        )}
+        <div style={{ width: "100%", height: 1, background: "var(--border)" }} />
+        <div style={{ width: "100%" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: 1, marginBottom: 8 }}>
+            PLAYED · {records?.length ?? 0}편
+          </div>
+          {records === null ? (
+            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>불러오는 중…</div>
+          ) : records.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>아직 플레이 기록이 없어요.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {records.slice(0, 8).map((title, i) => (
+                <div key={i} style={{ fontSize: 12.5 }}>· {title}</div>
+              ))}
+              {records.length > 8 && (
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>외 {records.length - 8}편</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <PrimaryButton onClick={saveImage} disabled={!!busy}>
+        {busy === "saving" ? "저장 중…" : "이미지로 저장"}
+      </PrimaryButton>
+    </Card>
   );
 }

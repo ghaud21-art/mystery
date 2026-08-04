@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
-import { Card, EmptyState, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
 const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "" };
 
@@ -91,19 +92,35 @@ export default function ScenarioSearch() {
               : "검색 결과가 없어요."}
           </EmptyState>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-            {filtered.map((s) => (
-              <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", overflowWrap: "break-word" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
-                {s.publisher && <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 2 }}>{s.publisher}</div>}
-                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                  {[s.playerCount, s.duration].filter(Boolean).join(" · ")}
+          <>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
+              {filtered.map((s) => (
+                <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
+                    <InfoRow icon="👥" value={s.playerCount ? `${s.playerCount} 인원` : "인원 미상"} />
+                    <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
+                  </div>
+                  <Link to="/records" state={{ scenarioName: s.title }}>
+                    <OutlineButton style={{ width: "100%", height: 32, fontSize: 12 }}>+ 기록에 추가</OutlineButton>
+                  </Link>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </Card>
+    </div>
+  );
+}
+
+function InfoRow({ icon, value }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-sub)" }}>
+      <span style={{ flex: "none" }}>{icon}</span>
+      <span style={{ overflowWrap: "break-word" }}>{value}</span>
     </div>
   );
 }

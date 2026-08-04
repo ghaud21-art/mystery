@@ -1,18 +1,37 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { Card, EmptyState, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
-const EMPTY_FORM = { scenarioName: "", character: "", rating: 5, note: "", spoiler: true };
+const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true };
 
 export default function Records() {
   const { profile } = useAuth();
+  const location = useLocation();
   const [records, setRecords] = useState(null);
   const [loadError, setLoadError] = useState("");
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(() =>
+    location.state?.scenarioName ? { ...EMPTY_FORM, scenarioName: location.state.scenarioName } : EMPTY_FORM
+  );
+  const [showForm, setShowForm] = useState(!!location.state?.scenarioName);
   const [revealed, setRevealed] = useState({});
+  const [scenarios, setScenarios] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
+      setScenarios(snap.docs.map((d) => d.data()));
+    })();
+  }, []);
+
+  const suggestions = (() => {
+    const q = form.scenarioName.trim().toLowerCase();
+    if (!q) return [];
+    return scenarios.filter((s) => s.title.toLowerCase().includes(q)).slice(0, 6);
+  })();
 
   async function load() {
     try {
@@ -34,9 +53,10 @@ export default function Records() {
 
   async function addRecord(e) {
     e.preventDefault();
+    const rating = Number(form.rating);
     await addDoc(collection(db, "records"), {
       ...form,
-      rating: Number(form.rating),
+      rating: rating > 0 ? rating : null,
       userId: profile.id,
       date: new Date().toISOString().slice(0, 10),
       createdAt: serverTimestamp(),
@@ -57,15 +77,47 @@ export default function Records() {
       {showForm && (
         <Card style={{ marginBottom: 20 }}>
           <form onSubmit={addRecord} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input required placeholder="시나리오 이름" value={form.scenarioName}
-              onChange={(e) => setForm({ ...form, scenarioName: e.target.value })} style={inputStyle} />
+            <div style={{ position: "relative" }}>
+              <input
+                required
+                placeholder="시나리오 이름 (입력하면 목록에서 찾아드려요)"
+                value={form.scenarioName}
+                onChange={(e) => { setForm({ ...form, scenarioName: e.target.value }); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                style={inputStyle}
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
+                  background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 8,
+                  boxShadow: "0 4px 16px rgba(0,0,0,.15)", overflow: "hidden",
+                }}>
+                  {suggestions.map((s) => (
+                    <button
+                      type="button"
+                      key={s.title}
+                      onMouseDown={() => { setForm({ ...form, scenarioName: s.title }); setShowSuggestions(false); }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "9px 14px",
+                        background: "none", border: "none", borderBottom: "1px solid var(--border)", fontSize: 13,
+                      }}
+                    >
+                      {s.title}
+                      {s.publisher && <span style={{ color: "var(--text-sub)", fontSize: 11.5 }}> · {s.publisher}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input placeholder="맡은 캐릭터/역할 (예: 탐정, 범인, 홍설록)" value={form.character}
               onChange={(e) => setForm({ ...form, character: e.target.value })} style={inputStyle} />
             <textarea placeholder="후기 메모" value={form.note} rows={3}
               onChange={(e) => setForm({ ...form, note: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
             <label style={{ fontSize: 12.5, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 8 }}>
-              별점
-              <select value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })} style={{ ...inputStyle, width: 80 }}>
+              별점 (선택)
+              <select value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })} style={{ ...inputStyle, width: 100 }}>
+                <option value={0}>평가 안 함</option>
                 {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
@@ -89,9 +141,15 @@ export default function Records() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
           {records.map((r) => (
             <Card key={r.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 14.5, fontWeight: 600 }}>{r.scenarioName}</div>
-                <span style={{ fontSize: 12, color: "var(--accent)", letterSpacing: 1 }}>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600, overflowWrap: "break-word" }}>{r.scenarioName}</div>
+                {r.rating ? (
+                  <span style={{ fontSize: 12, color: "var(--accent)", letterSpacing: 1, whiteSpace: "nowrap" }}>
+                    {"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, color: "var(--text-sub)", whiteSpace: "nowrap" }}>평가 안 함</span>
+                )}
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 4 }}>{r.date}</div>
               {r.character && (
