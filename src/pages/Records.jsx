@@ -8,7 +8,7 @@ import { syncPlayedTitles } from "../lib/records.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 
-const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false };
+const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false };
 const VIEW_TABS = [
   { key: "list", label: "목록 (가나다순)" },
   { key: "calendar", label: "캘린더로 보기" },
@@ -105,7 +105,7 @@ export default function Records() {
     setEditingId(r.id);
     setForm({
       scenarioName: r.scenarioName, character: r.character || "", rating: r.rating || 0,
-      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite,
+      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite, public: !!r.public,
     });
     setShowForm(true);
   }
@@ -245,6 +245,10 @@ export default function Records() {
               <input type="checkbox" checked={form.favorite} onChange={(e) => setForm({ ...form, favorite: e.target.checked })} />
               ⭐ 인생머미 (추천 카드에 이름이 표시돼요)
             </label>
+            <label style={{ fontSize: 12.5, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={form.public} onChange={(e) => setForm({ ...form, public: e.target.checked })} />
+              이 감상평을 같은 작품을 찾는 다른 사람도 볼 수 있게 공개 (기본은 비공개예요)
+            </label>
             <PrimaryButton type="submit">{editingId ? "수정 저장" : "기록 저장"}</PrimaryButton>
           </form>
         </Card>
@@ -354,7 +358,15 @@ function RecordCard({ r, revealed, setRevealed, startEdit, removeRecord, compact
           역할: {r.character}
         </div>
       )}
-      {r.note && <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--text-sub)" }}>{r.note}</div>}
+      {r.note && (
+        <div
+          className={!revealed[r.id] ? "spoiler" : ""}
+          onClick={() => setRevealed((v) => ({ ...v, [r.id]: true }))}
+          style={{ marginTop: 6, fontSize: 12.5, color: "var(--text-sub)" }}
+        >
+          {r.note}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <OutlineButton style={{ flex: 1, height: 32, fontSize: 12 }} onClick={() => startEdit(r)}>수정</OutlineButton>
         <OutlineButton

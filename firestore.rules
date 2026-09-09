@@ -79,9 +79,11 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
     }
 
-    // records/{id} — 본인 기록만 읽고 쓸 수 있음. 커뮤니티 공개 후기는 별도 posts 컬렉션에서 다룸.
+    // records/{id} — 기본은 본인만 읽고 쓸 수 있음. 본인이 public:true로 공개한 감상평은
+    // 같은 시나리오를 찾아보는 다른 유저도 읽을 수 있음(작성자가 명시적으로 공개한 것만).
     match /records/{id} {
-      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || resource.data.public == true);
+      allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
     }
 

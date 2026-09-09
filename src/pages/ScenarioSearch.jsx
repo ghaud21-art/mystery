@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, arrayRemove, arrayUnion, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
@@ -29,6 +29,7 @@ export default function ScenarioSearch() {
   const [quickAddId, setQuickAddId] = useState(null);
   const [quickForm, setQuickForm] = useState(QUICK_FORM_EMPTY);
   const [savingId, setSavingId] = useState(null);
+  const [openReviewsId, setOpenReviewsId] = useState(null);
 
   async function loadScenarios() {
     const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
@@ -59,6 +60,7 @@ export default function ScenarioSearch() {
       date: new Date().toISOString().slice(0, 10),
       spoiler: true,
       favorite: quickForm.favorite,
+      public: false,
       createdAt: serverTimestamp(),
     });
     await syncPlayedTitles(profile.id);
@@ -88,9 +90,10 @@ export default function ScenarioSearch() {
         return r ? tab.test(r) : false;
       })
       .filter((s) => !wishlistOnly || (profile?.wishlist || []).includes(s.id))
+      .filter((s) => !playedTitles || !playedTitles.has(normalizeTitle(s.title)))
       .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
     return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search, category, playerTab, wishlistOnly, profile?.wishlist]);
+  }, [scenarios, search, category, playerTab, wishlistOnly, profile?.wishlist, playedTitles]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -225,21 +228,30 @@ export default function ScenarioSearch() {
               ? "위시리스트가 비어있어요. 하트를 눌러서 하고 싶은 머미를 담아보세요."
               : scenarios.length === 0
               ? "아직 등록된 시나리오가 없어요. 위에서 첫 작품을 등록 요청해보세요."
-              : "검색 결과가 없어요."}
+              : "검색 결과가 없어요. (이미 기록한 작품은 목록에서 빠져요)"}
           </EmptyState>
         ) : (
           <>
-            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순)</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순 · 아직 기록 안 한 작품만)</div>
             <ScrollBox maxHeight="clamp(280px, calc(100vh - 380px), 640px)">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
                 {filtered.map((s) => {
-                  const played = playedTitles?.has(normalizeTitle(s.title));
                   const quickOpen = quickAddId === s.id;
                   const wished = (profile?.wishlist || []).includes(s.id);
                   return (
                     <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                        <div style={{ flex: 1, fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word" }}>{s.title}</div>
+                        <button
+                          type="button"
+                          onClick={() => setOpenReviewsId((id) => (id === s.id ? null : s.id))}
+                          title="다른 사람이 공개한 감상평 보기"
+                          style={{
+                            flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer",
+                            fontSize: 14.5, fontWeight: 700, lineHeight: 1.35, overflowWrap: "break-word", color: "var(--text)",
+                          }}
+                        >
+                          {s.title}
+                        </button>
                         <button
                           type="button"
                           onClick={() => toggleWishlist(s)}
@@ -255,11 +267,9 @@ export default function ScenarioSearch() {
                         <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
                       </div>
 
-                      {played ? (
-                        <OutlineButton disabled style={{ width: "100%", height: 32, fontSize: 12, color: "var(--text-sub)" }}>
-                          ✓ 이미 기록됨
-                        </OutlineButton>
-                      ) : quickOpen ? (
+                      {openReviewsId === s.id && <ScenarioReviews scenarioTitle={s.title} />}
+
+                      {quickOpen ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
                           <input
                             placeholder="맡은 캐릭터/역할 (선택)"
@@ -301,6 +311,53 @@ export default function ScenarioSearch() {
           </>
         )}
       </Card>
+    </div>
+  );
+}
+
+function ScenarioReviews({ scenarioTitle }) {
+  const [reviews, setReviews] = useState(null);
+  const [revealed, setRevealed] = useState({});
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(
+        query(collection(db, "records"), where("scenarioName", "==", scenarioTitle), where("public", "==", true))
+      );
+      const records = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const userIds = [...new Set(records.map((r) => r.userId))];
+      const userDocs = await Promise.all(userIds.map((uid) => getDoc(doc(db, "users", uid))));
+      const usersById = Object.fromEntries(userDocs.filter((d) => d.exists()).map((d) => [d.id, { id: d.id, ...d.data() }]));
+      setReviews(records.map((r) => ({ ...r, user: usersById[r.userId] })).filter((r) => r.user));
+    })();
+  }, [scenarioTitle]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-sub)" }}>다른 사람이 공개한 감상평</div>
+      {reviews === null ? (
+        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>불러오는 중…</div>
+      ) : reviews.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>아직 공개된 감상평이 없어요.</div>
+      ) : (
+        reviews.map((r) => (
+          <div key={r.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600 }}>
+              {displayName(r.user)}
+              {r.rating ? <span style={{ color: "var(--accent)" }}> · {"★".repeat(r.rating)}</span> : null}
+            </div>
+            {r.note && (
+              <div
+                className={!revealed[r.id] ? "spoiler" : ""}
+                onClick={() => setRevealed((v) => ({ ...v, [r.id]: true }))}
+                style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}
+              >
+                {r.note}
+              </div>
+            )}
+          </div>
+        ))
+      )}
     </div>
   );
 }
