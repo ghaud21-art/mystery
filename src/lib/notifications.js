@@ -58,13 +58,27 @@ export async function listenForegroundMessages() {
   const messaging = await getMessagingIfSupported();
   if (!messaging) return;
 
-  onMessage(messaging, (payload) => {
+  onMessage(messaging, async (payload) => {
     const { title, body } = payload.notification || {};
     if (!title) return;
+    const options = { body: body || "", icon: "/icons/icon-192.png" };
+
+    // 모바일(Android) Chrome은 페이지 스크립트에서 직접 new Notification()을 호출하는 걸
+    // 막고("Illegal constructor") 서비스워커의 showNotification()만 허용함. 그래서 그쪽을
+    // 우선 시도하고, 등록된 서비스워커가 없는 경우에만 new Notification()으로 폴백.
+    const registration = await navigator.serviceWorker.getRegistration(PUSH_SCOPE);
+    if (registration) {
+      try {
+        await registration.showNotification(title, options);
+        return;
+      } catch {
+        // 아래 폴백으로 넘어감
+      }
+    }
     try {
-      new Notification(title, { body: body || "", icon: "/icons/icon-192.png" });
+      new Notification(title, options);
     } catch {
-      // 일부 브라우저(예: 모바일 사파리)는 페이지에서 직접 Notification 생성을 막을 수 있음 — 무시
+      // 더 이상 시도할 방법이 없음 — 무시
     }
   });
 }
