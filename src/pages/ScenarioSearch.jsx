@@ -21,6 +21,7 @@ export default function ScenarioSearch() {
   const [category, setCategory] = useState("offline");
   const [playerTab, setPlayerTab] = useState("all");
   const [wishlistOnly, setWishlistOnly] = useState(false);
+  const [unplayedOnly, setUnplayedOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -90,10 +91,10 @@ export default function ScenarioSearch() {
         return r ? tab.test(r) : false;
       })
       .filter((s) => !wishlistOnly || (profile?.wishlist || []).includes(s.id))
-      .filter((s) => !playedTitles || !playedTitles.has(normalizeTitle(s.title)))
+      .filter((s) => !unplayedOnly || !playedTitles || !playedTitles.has(normalizeTitle(s.title)))
       .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
     return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search, category, playerTab, wishlistOnly, profile?.wishlist, playedTitles]);
+  }, [scenarios, search, category, playerTab, wishlistOnly, unplayedOnly, profile?.wishlist, playedTitles]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -164,18 +165,32 @@ export default function ScenarioSearch() {
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setWishlistOnly((v) => !v)}
-          style={{
-            height: 34, borderRadius: 8, fontSize: 12.5, fontWeight: 600,
-            border: `1.5px solid ${wishlistOnly ? "var(--danger)" : "var(--border)"}`,
-            background: wishlistOnly ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "transparent",
-            color: wishlistOnly ? "var(--danger)" : "var(--text-sub)",
-          }}
-        >
-          {wishlistOnly ? "♥" : "♡"} 위시리스트만 보기
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setWishlistOnly((v) => !v)}
+            style={{
+              flex: "1 1 140px", height: 34, borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+              border: `1.5px solid ${wishlistOnly ? "var(--danger)" : "var(--border)"}`,
+              background: wishlistOnly ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "transparent",
+              color: wishlistOnly ? "var(--danger)" : "var(--text-sub)",
+            }}
+          >
+            {wishlistOnly ? "♥" : "♡"} 위시리스트만 보기
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnplayedOnly((v) => !v)}
+            style={{
+              flex: "1 1 140px", height: 34, borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+              border: `1.5px solid ${unplayedOnly ? "var(--accent)" : "var(--border)"}`,
+              background: unplayedOnly ? "var(--accent-dim)" : "transparent",
+              color: unplayedOnly ? "var(--accent)" : "var(--text-sub)",
+            }}
+          >
+            내가 안 한 것만 보기
+          </button>
+        </div>
 
         <input
           placeholder="시나리오 이름으로 검색"
@@ -226,16 +241,19 @@ export default function ScenarioSearch() {
           <EmptyState>
             {wishlistOnly
               ? "위시리스트가 비어있어요. 하트를 눌러서 하고 싶은 머미를 담아보세요."
+              : unplayedOnly
+              ? "조건에 맞고 아직 안 한 작품이 없어요."
               : scenarios.length === 0
               ? "아직 등록된 시나리오가 없어요. 위에서 첫 작품을 등록 요청해보세요."
-              : "검색 결과가 없어요. (이미 기록한 작품은 목록에서 빠져요)"}
+              : "검색 결과가 없어요."}
           </EmptyState>
         ) : (
           <>
-            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순 · 아직 기록 안 한 작품만)</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순)</div>
             <ScrollBox maxHeight="clamp(280px, calc(100vh - 380px), 640px)">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
                 {filtered.map((s) => {
+                  const played = playedTitles?.has(normalizeTitle(s.title));
                   const quickOpen = quickAddId === s.id;
                   const wished = (profile?.wishlist || []).includes(s.id);
                   return (
@@ -269,7 +287,11 @@ export default function ScenarioSearch() {
 
                       {openReviewsId === s.id && <ScenarioReviews scenarioTitle={s.title} />}
 
-                      {quickOpen ? (
+                      {played ? (
+                        <OutlineButton disabled style={{ width: "100%", height: 32, fontSize: 12, color: "var(--text-sub)" }}>
+                          ✓ 이미 기록됨
+                        </OutlineButton>
+                      ) : quickOpen ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
                           <input
                             placeholder="맡은 캐릭터/역할 (선택)"
