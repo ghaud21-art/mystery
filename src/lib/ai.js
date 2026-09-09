@@ -110,6 +110,43 @@ export async function analyzeStyle(profile) {
 
 // 자유 형식으로 붙여넣은 플레이 기록 텍스트(제목만, 혹은 캐릭터·별점·날짜가 섞인 메모)를
 // 플레이 기록 등록에 쓸 수 있는 구조화된 배열로 파싱.
+// 기존 기록의 시나리오 제목 표기가 최신 시나리오 DB 정식 제목과 다를 때(오타, 띄어쓰기,
+// 줄임말 등) 정식 제목으로 맞출 후보를 AI로 찾아줌. 확신이 서는 것만 반환하고, 실제 반영은
+// 호출한 쪽에서 사용자가 확인한 뒤 진행함(자동 반영 아님).
+export async function matchRecordsToCanonicalTitles(profile, items, canonicalTitles) {
+  if (!canUseAI(profile)) {
+    const err = new Error("무료 AI 사용 횟수를 모두 사용했어요.");
+    err.code = "AI_LIMIT_REACHED";
+    throw err;
+  }
+  if (!items.length || !canonicalTitles.length) return [];
+
+  const prompt = [
+    "당신은 머더미스터리·크라임씬·스크립트킬 시나리오 제목 정리 도우미입니다.",
+    "[정식 제목 목록]은 서비스에 정식 등록된 작품 제목들입니다.",
+    "[내 기록 제목 목록]은 사용자가 예전에 직접 입력해서 표기가 다를 수 있는(오타, 띄어쓰기 차이, 줄임말, 부제 생략 등) 제목들이고, 각 항목은 {id, scenarioName} 형태입니다.",
+    "각 기록이 [정식 제목 목록] 중 하나와 같은 작품을 가리키는 게 '확실할' 때만 매칭하세요.",
+    "다른 작품일 수도 있거나 확신이 서지 않으면 그 항목은 결과에서 빼세요. 이미 정식 제목과 완전히 같은 것도 빼세요.",
+    "다른 설명 없이 아래 형식의 순수 JSON 배열만 출력하세요 (확실히 매칭된 것만 포함, 없으면 빈 배열 []):",
+    '[{"id": "입력받은 id 그대로", "matchedTitle": "정식 제목 목록에 있는 문자열 그대로"}]',
+    "",
+    "[정식 제목 목록]",
+    JSON.stringify(canonicalTitles),
+    "",
+    "[내 기록 제목 목록]",
+    JSON.stringify(items),
+  ].join("\n");
+
+  const result = await generateWithFallback(prompt);
+  const parsed = parseJsonResponse(result);
+  await recordAIUsage(profile.id);
+  if (!Array.isArray(parsed)) throw new Error("AI 응답을 해석하지 못했어요. 다시 시도해주세요.");
+
+  const canonicalSet = new Set(canonicalTitles);
+  const itemIds = new Set(items.map((i) => i.id));
+  return parsed.filter((r) => r?.id && itemIds.has(r.id) && r?.matchedTitle && canonicalSet.has(r.matchedTitle));
+}
+
 export async function parseBulkRecords(profile, rawText) {
   if (!canUseAI(profile)) {
     const err = new Error("무료 AI 사용 횟수를 모두 사용했어요.");

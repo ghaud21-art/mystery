@@ -5,7 +5,9 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
-import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
+import { normalizeTitle } from "../lib/scenarioUtils.js";
+import { canUseAI, KAKAO_CONTACT_URL, matchRecordsToCanonicalTitles } from "../lib/ai.js";
+import { AILimitNotice, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 
 const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false };
@@ -36,6 +38,10 @@ export default function Records() {
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [attendedByDate, setAttendedByDate] = useState({});
+  const [aiCleanupBusy, setAiCleanupBusy] = useState(false);
+  const [aiCleanupStatus, setAiCleanupStatus] = useState("");
+  const [aiCleanupSuggestions, setAiCleanupSuggestions] = useState(null);
+  const [aiCleanupApplying, setAiCleanupApplying] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -138,6 +144,66 @@ export default function Records() {
     load();
   }
 
+  // 예전에 직접 입력해서 정식 시나리오 DB 표기와 달라진(오타·띄어쓰기·줄임말 등) 기록 제목을
+  // AI로 찾아서 정식 제목으로 맞출 수 있게 제안. 실제 반영은 사용자가 확인 후 "적용"할 때만.
+  async function runAiCleanup() {
+    setAiCleanupStatus("");
+    setAiCleanupSuggestions(null);
+    if (!canUseAI(profile)) return;
+
+    const canonicalTitles = scenarios.map((s) => s.title);
+    const canonicalKeys = new Set(canonicalTitles.map((t) => normalizeTitle(t)));
+    const candidates = (records || []).filter((r) => !canonicalKeys.has(normalizeTitle(r.scenarioName)));
+
+    if (candidates.length === 0) {
+      setAiCleanupStatus("이미 다 정식 제목과 일치해요. 정리할 게 없어요!");
+      return;
+    }
+
+    setAiCleanupBusy(true);
+    try {
+      const items = candidates.map((r) => ({ id: r.id, scenarioName: r.scenarioName }));
+      const matches = await matchRecordsToCanonicalTitles(profile, items, canonicalTitles);
+      if (matches.length === 0) {
+        setAiCleanupStatus("확실하게 매칭되는 게 없었어요. (오타가 너무 크거나 목록에 없는 작품일 수 있어요)");
+      } else {
+        setAiCleanupSuggestions(
+          matches.map((m) => ({
+            id: m.id,
+            oldTitle: candidates.find((r) => r.id === m.id)?.scenarioName || "",
+            newTitle: m.matchedTitle,
+            apply: true,
+          }))
+        );
+      }
+    } catch (err) {
+      setAiCleanupStatus(err.message || "정리에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setAiCleanupBusy(false);
+    }
+  }
+
+  function toggleAiSuggestion(id) {
+    setAiCleanupSuggestions((list) => list.map((s) => (s.id === id ? { ...s, apply: !s.apply } : s)));
+  }
+
+  async function applyAiCleanup() {
+    const toApply = (aiCleanupSuggestions || []).filter((s) => s.apply);
+    if (toApply.length === 0) {
+      setAiCleanupSuggestions(null);
+      return;
+    }
+    setAiCleanupApplying(true);
+    for (const s of toApply) {
+      await updateDoc(doc(db, "records", s.id), { scenarioName: s.newTitle });
+    }
+    await syncPlayedTitles(profile.id);
+    setAiCleanupApplying(false);
+    setAiCleanupSuggestions(null);
+    setAiCleanupStatus(`${toApply.length}건 정리했어요!`);
+    load();
+  }
+
   const sortedRecords = useMemo(() => {
     if (!records) return [];
     const q = search.trim().toLowerCase();
@@ -184,6 +250,46 @@ export default function Records() {
           </button>
         ))}
       </div>
+
+      <Card style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>✨ AI 정리</div>
+            <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+              옛날에 직접 적어둔 제목이 정식 시나리오 DB 표기랑 달라졌으면(오타·줄임말 등) 찾아서 맞춰드려요.
+            </div>
+          </div>
+          <OutlineButton style={{ height: 32, padding: "0 14px", fontSize: 12 }} onClick={runAiCleanup} disabled={aiCleanupBusy || !canUseAI(profile)}>
+            {aiCleanupBusy ? "확인 중…" : "AI 정리 실행"}
+          </OutlineButton>
+        </div>
+        {!canUseAI(profile) && <AILimitNotice kakaoUrl={KAKAO_CONTACT_URL} />}
+        {aiCleanupStatus && <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{aiCleanupStatus}</div>}
+
+        {aiCleanupSuggestions && aiCleanupSuggestions.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+              아래 제안 중 맞는 것만 체크하고 적용하세요. (다른 작품이면 체크 해제)
+            </div>
+            {aiCleanupSuggestions.map((s) => (
+              <label key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--bg-sub)" }}>
+                <input type="checkbox" checked={s.apply} onChange={() => toggleAiSuggestion(s.id)} style={{ marginTop: 3 }} />
+                <div style={{ fontSize: 12.5 }}>
+                  <span style={{ color: "var(--text-sub)", textDecoration: "line-through" }}>{s.oldTitle}</span>
+                  {" → "}
+                  <span style={{ fontWeight: 600 }}>{s.newTitle}</span>
+                </div>
+              </label>
+            ))}
+            <div style={{ display: "flex", gap: 8 }}>
+              <OutlineButton style={{ flex: "none" }} onClick={() => setAiCleanupSuggestions(null)}>취소</OutlineButton>
+              <PrimaryButton style={{ flex: 1 }} onClick={applyAiCleanup} disabled={aiCleanupApplying}>
+                {aiCleanupApplying ? "적용 중…" : `선택한 ${aiCleanupSuggestions.filter((s) => s.apply).length}건 적용`}
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {showForm && (
         <Card style={{ marginBottom: 20 }}>
