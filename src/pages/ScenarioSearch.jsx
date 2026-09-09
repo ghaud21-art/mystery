@@ -130,7 +130,19 @@ export default function ScenarioSearch() {
 
   async function submitRequest(e) {
     e.preventDefault();
+    const key = normalizeTitle(form.title);
+    const dupExisting = (scenarios || []).find((s) => normalizeTitle(s.title) === key);
+    if (dupExisting) {
+      setSubmitStatus(`"${dupExisting.title}"(이)라는 비슷한 제목이 이미 있어요. 목록에서 찾아보세요.`);
+      return;
+    }
     setSubmitStatus("등록 요청 중…");
+    const pendingSnap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "pending")));
+    const dupPending = pendingSnap.docs.find((d) => normalizeTitle(d.data().title) === key);
+    if (dupPending) {
+      setSubmitStatus(`"${dupPending.data().title}"(이)라는 비슷한 제목이 이미 등록 요청되어 있어요.`);
+      return;
+    }
     await addDoc(collection(db, "scenarios"), {
       ...form,
       status: "pending",
