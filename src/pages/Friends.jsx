@@ -9,6 +9,7 @@ import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js"
 import { displayName } from "../lib/profileDisplay.js";
 import { normalizeTitle, parsePlayerRange } from "../lib/scenarioUtils.js";
 import { computeCoAttendanceCounts } from "../lib/partners.js";
+import { fetchScheduledTitles } from "../lib/scheduledTitles.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
@@ -379,17 +380,19 @@ function TogetherRecommend({ profile, friends, selectedIds }) {
   const selectedFriends = friends.filter((f) => selectedIds.has(f.id));
   const groupSize = 1 + selectedFriends.length;
 
-  function findRecommendations() {
+  async function findRecommendations() {
     setLoading(true);
     setResults(null);
     setVisibleCount(PAGE_SIZE);
     // records 컬렉션은 본인만 읽을 수 있어서 친구 기록을 직접 조회할 수 없음 —
     // 대신 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
+    const scheduledTitles = await fetchScheduledTitles(profile.id);
     const people = [profile, ...selectedFriends];
     const eligible = scenarios.filter((s) => {
       const range = parsePlayerRange(s.playerCount);
       if (!range || groupSize < range.min || groupSize > range.max) return false;
       const key = normalizeTitle(s.title);
+      if (scheduledTitles.has(key)) return false; // 이미 참석하기로 했거나 개인 일정으로 잡아둔 작품은 제외
       return people.every((p) => !(p.playedTitles || []).includes(key));
     });
 

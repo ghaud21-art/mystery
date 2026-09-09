@@ -10,6 +10,7 @@ import { compatLabel, compatShortLabel, compatWithReason, COMPAT_TONE_COLOR, TYP
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
+import { fetchScheduledTitles } from "../lib/scheduledTitles.js";
 import { PRESET_COLORS } from "../lib/colors.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
@@ -214,7 +215,7 @@ export default function GroupDetail() {
       {tab === "schedules" && <SchedulesTab group={group} profile={profile} members={members} />}
       {tab === "availability" && <AvailabilityTab members={members} profile={profile} />}
       {tab === "compat" && <CompatTab members={members} />}
-      {tab === "unplayed" && <UnplayedTab members={members} />}
+      {tab === "unplayed" && <UnplayedTab members={members} profile={profile} />}
 
       {showMembersModal && (
         <GroupMembersModal
@@ -1141,7 +1142,7 @@ function CompatWeb({ members, pairs, openPair, setOpenPair }) {
 
 const UNPLAYED_PAGE_SIZE = 10;
 
-function UnplayedTab({ members }) {
+function UnplayedTab({ members, profile }) {
   const [scenarios, setScenarios] = useState(null);
   const [results, setResults] = useState(null);
   const [visibleCount, setVisibleCount] = useState(UNPLAYED_PAGE_SIZE);
@@ -1154,14 +1155,16 @@ function UnplayedTab({ members }) {
     })();
   }, []);
 
-  function findUnplayed() {
+  async function findUnplayed() {
     setLoading(true);
     setVisibleCount(UNPLAYED_PAGE_SIZE);
     // records는 본인만 읽을 수 있어서 멤버 기록을 직접 조회할 수 없음 —
     // 각자 users 문서에 함께 저장해둔 playedTitles(정규화된 제목 목록)를 사용.
+    const scheduledTitles = await fetchScheduledTitles(profile.id);
     const unplayed = scenarios
       .filter((s) => {
         const key = normalizeTitle(s.title);
+        if (scheduledTitles.has(key)) return false; // 이미 참석하기로 했거나 개인 일정으로 잡아둔 작품은 제외
         return members.every((m) => !(m.playedTitles || []).includes(key));
       })
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
