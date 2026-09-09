@@ -438,7 +438,7 @@ function SchedulesTab({ group, profile, members }) {
   }, []);
 
   const titleSuggestions = (() => {
-    if (form.category !== "머더미스터리") return [];
+    if (form.category !== "머더미스터리" && form.category !== "크라임씬") return [];
     const q = form.title.trim().toLowerCase();
     if (!q) return [];
     return scenarios.filter((sc) => sc.title.toLowerCase().includes(q)).slice(0, 6);
@@ -776,7 +776,7 @@ function SchedulesTab({ group, profile, members }) {
             <div style={{ position: "relative" }}>
               <input
                 required
-                placeholder={form.category === "머더미스터리" ? "이름 (입력하면 시나리오 목록에서 찾아드려요)" : "이름 (테마/게임 등)"}
+                placeholder={form.category === "머더미스터리" || form.category === "크라임씬" ? "이름 (입력하면 시나리오 목록에서 찾아드려요)" : "이름 (테마/게임 등)"}
                 value={form.title}
                 onChange={(e) => { setForm({ ...form, title: e.target.value }); setShowTitleSuggestions(true); }}
                 onFocus={() => setShowTitleSuggestions(true)}
