@@ -11,7 +11,8 @@ import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox }
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import { PRESET_COLORS } from "../lib/colors.js";
 
-const PERSONAL_CATEGORIES = ["머더미스터리", "방탈출", "보드게임", "기타"];
+const PERSONAL_CATEGORIES = ["머더미스터리", "크라임씬", "방탈출", "보드게임", "기타"];
+const ALL_CATEGORIES = ["all", ...PERSONAL_CATEGORIES];
 const EMPTY_PERSONAL_FORM = {
   category: PERSONAL_CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "", color: PRESET_COLORS[1],
 };
@@ -27,6 +28,8 @@ export default function Agenda() {
   const [personalForm, setPersonalForm] = useState(EMPTY_PERSONAL_FORM);
   const [editingPersonalId, setEditingPersonalId] = useState(null);
   const [personalBusy, setPersonalBusy] = useState(false);
+  const [personalCategoryFilter, setPersonalCategoryFilter] = useState("all");
+  const [upcomingCategoryFilter, setUpcomingCategoryFilter] = useState("all");
 
   const notifEnabled = (profile?.fcmTokens?.length || 0) > 0;
 
@@ -184,15 +187,28 @@ export default function Agenda() {
   const [selectedDate, setSelectedDate] = useState(null);
   const selectedEvents = selectedDate ? eventsByDate[selectedDate] || [] : [];
 
-  const upcoming = useMemo(() => {
+  // 지난 일정도 목록에 남기되(흐리게 표시), 맨 아래로 내려가도록 정렬
+  const sortedAgendaItems = useMemo(() => {
     const now = new Date().toISOString();
-    return (items || []).filter((s) => s.datetime >= now);
+    return [...(items || [])]
+      .map((s) => ({ ...s, isPast: !!((s.endDatetime || s.datetime) && (s.endDatetime || s.datetime) < now) }))
+      .sort((a, b) => {
+        if (a.isPast !== b.isPast) return a.isPast ? 1 : -1;
+        return (a.datetime || "").localeCompare(b.datetime || "");
+      });
   }, [items]);
+
+  const displayAgendaItems = useMemo(() => {
+    if (upcomingCategoryFilter === "all") return sortedAgendaItems;
+    return sortedAgendaItems.filter((s) => (s.category || "머더미스터리") === upcomingCategoryFilter);
+  }, [sortedAgendaItems, upcomingCategoryFilter]);
 
   const upcomingPersonal = useMemo(() => {
     const now = new Date().toISOString();
-    return (personalSchedules || []).filter((s) => s.datetime >= now);
-  }, [personalSchedules]);
+    return (personalSchedules || [])
+      .filter((s) => s.datetime >= now)
+      .filter((s) => personalCategoryFilter === "all" || s.category === personalCategoryFilter);
+  }, [personalSchedules, personalCategoryFilter]);
 
   return (
     <div className="fade-in">
@@ -219,40 +235,93 @@ export default function Agenda() {
         )}
       </Card>
 
-      <Card style={{ marginBottom: 20 }}>
-        <MonthCalendar
-          markedDates={markedDates}
-          eventsByDate={eventsByDate}
-          selectedDate={selectedDate}
-          onSelectDate={(key) => setSelectedDate((d) => (d === key ? null : key))}
-        />
-        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)" }}>
-          모임 일정은 모임 색깔로, 개인 일정은 등록할 때 고른 색으로 표시돼요.
-          모임 색깔은 모임 페이지 "편집"에서 바꿀 수 있어요.
-        </div>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start", marginBottom: 20 }}>
+        <Card>
+          <MonthCalendar
+            markedDates={markedDates}
+            eventsByDate={eventsByDate}
+            selectedDate={selectedDate}
+            onSelectDate={(key) => setSelectedDate((d) => (d === key ? null : key))}
+          />
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)" }}>
+            모임 일정은 모임 색깔로, 개인 일정은 등록할 때 고른 색으로 표시돼요.
+            모임 색깔은 모임 페이지 "편집"에서 바꿀 수 있어요.
+          </div>
 
-        {selectedDate && (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedDate}</div>
-            {selectedEvents.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--text-sub)" }}>이 날짜엔 일정이 없어요.</div>
-            ) : (
-              selectedEvents.map((e, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 3, background: e.color, marginTop: 4, flex: "none" }} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{e.detail.title}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                      {formatDate(e.detail.datetime)}{e.detail.endDatetime ? ` ~ ${formatDate(e.detail.endDatetime)}` : ""} · {e.detail.location}
-                      {e.type === "group" && ` · ${e.detail.groupName}`}
+          {selectedDate && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedDate}</div>
+              {selectedEvents.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-sub)" }}>이 날짜엔 일정이 없어요.</div>
+              ) : (
+                selectedEvents.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 3, background: e.color, marginTop: 4, flex: "none" }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{e.detail.title}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                        {formatDate(e.detail.datetime)}{e.detail.endDatetime ? ` ~ ${formatDate(e.detail.endDatetime)}` : ""} · {e.detail.location}
+                        {e.type === "group" && ` · ${e.detail.groupName}`}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </Card>
+                ))
+              )}
+            </div>
+          )}
+        </Card>
+
+        <Card style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>다가오는 일정</div>
+          {items && items.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {ALL_CATEGORIES.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setUpcomingCategoryFilter(c)}
+                  style={{
+                    padding: "5px 10px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
+                    border: `1.5px solid ${upcomingCategoryFilter === c ? "var(--accent)" : "var(--border)"}`,
+                    background: upcomingCategoryFilter === c ? "var(--accent-dim)" : "transparent",
+                    color: upcomingCategoryFilter === c ? "var(--accent)" : "var(--text-sub)",
+                  }}
+                >
+                  {c === "all" ? "전체" : c}
+                </button>
+              ))}
+            </div>
+          )}
+          {items === null ? (
+            <span style={{ fontSize: 13, color: "var(--text-sub)" }}>불러오는 중…</span>
+          ) : displayAgendaItems.length === 0 ? (
+            <EmptyState>
+              예정된 일정이 없어요.
+              <br />
+              <Link to="/schedule" style={{ textDecoration: "underline" }}>모임에서 일정 만들러 가기 →</Link>
+            </EmptyState>
+          ) : (
+            <ScrollBox maxHeight="clamp(280px, calc(100vh - 460px), 520px)">
+              {displayAgendaItems.map((s) => (
+                <Link key={s.id} to={`/schedule/${s.groupId}`} style={{ opacity: s.isPast ? 0.5 : 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.groupName}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{s.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{formatDate(s.datetime)} · {s.location}</div>
+                    </div>
+                    <span style={{ fontSize: 11.5, color: s.attendees?.[profile.id] === "yes" ? "var(--success)" : "var(--text-sub)" }}>
+                      {s.isPast ? "종료" : s.attendees?.[profile.id] === "yes" ? "참석 예정" : "미정"}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </ScrollBox>
+          )}
+        </Card>
+      </div>
+
+      {loadError && <div style={{ fontSize: 12.5, color: "var(--danger)", marginBottom: 12 }}>{loadError}</div>}
 
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
@@ -323,6 +392,26 @@ export default function Agenda() {
           </form>
         )}
 
+        {personalSchedules && personalSchedules.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {ALL_CATEGORIES.map((c) => (
+              <button
+                type="button"
+                key={c}
+                onClick={() => setPersonalCategoryFilter(c)}
+                style={{
+                  padding: "5px 10px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
+                  border: `1.5px solid ${personalCategoryFilter === c ? "var(--accent)" : "var(--border)"}`,
+                  background: personalCategoryFilter === c ? "var(--accent-dim)" : "transparent",
+                  color: personalCategoryFilter === c ? "var(--accent)" : "var(--text-sub)",
+                }}
+              >
+                {c === "all" ? "전체" : c}
+              </button>
+            ))}
+          </div>
+        )}
+
         {personalSchedules === null ? (
           <span style={{ fontSize: 13, color: "var(--text-sub)" }}>불러오는 중…</span>
         ) : upcomingPersonal.length === 0 ? (
@@ -350,38 +439,6 @@ export default function Agenda() {
               </div>
             </div>
           ))
-        )}
-      </Card>
-
-      {loadError && <div style={{ fontSize: 12.5, color: "var(--danger)", marginBottom: 12 }}>{loadError}</div>}
-
-      <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>다가오는 일정</div>
-        {items === null ? (
-          <span style={{ fontSize: 13, color: "var(--text-sub)" }}>불러오는 중…</span>
-        ) : upcoming.length === 0 ? (
-          <EmptyState>
-            예정된 일정이 없어요.
-            <br />
-            <Link to="/schedule" style={{ textDecoration: "underline" }}>모임에서 일정 만들러 가기 →</Link>
-          </EmptyState>
-        ) : (
-          <ScrollBox maxHeight="clamp(240px, calc(100vh - 480px), 480px)">
-            {upcoming.map((s) => (
-              <Link key={s.id} to={`/schedule/${s.groupId}`}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.groupName}</div>
-                    <div style={{ fontSize: 15, fontWeight: 700 }}>{s.title}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{formatDate(s.datetime)} · {s.location}</div>
-                  </div>
-                  <span style={{ fontSize: 11.5, color: s.attendees?.[profile.id] === "yes" ? "var(--success)" : "var(--text-sub)" }}>
-                    {s.attendees?.[profile.id] === "yes" ? "참석 예정" : "미정"}
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </ScrollBox>
         )}
       </Card>
     </div>

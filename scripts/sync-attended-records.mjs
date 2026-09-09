@@ -1,5 +1,5 @@
 // 매일 GitHub Actions 크론으로 실행됨 (.github/workflows/sync-attended-records.yml).
-// 날짜가 지난 "머더미스터리" 카테고리 일정(모임 일정 + 개인 일정) 중 참석/등록한 사람에게
+// 날짜가 지난 "머더미스터리"/"크라임씬" 카테고리 일정(모임 일정 + 개인 일정) 중 참석/등록한 사람에게
 // 플레이 기록을 자동으로 만들어줌. 한 번 처리한 일정은 recordSynced:true로 표시해 다음 실행에서 건너뜀.
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -41,8 +41,10 @@ async function createRecordIfMissing(uid, title, date) {
 
 let created = 0;
 
+const RECORD_CATEGORIES = ["머더미스터리", "크라임씬"];
+
 // 1) 모임 일정 — 참석(yes)한 멤버들
-const groupSnap = await db.collection("schedules").where("category", "==", "머더미스터리").get();
+const groupSnap = await db.collection("schedules").where("category", "in", RECORD_CATEGORIES).get();
 const dueGroupSchedules = groupSnap.docs.filter((doc) => {
   const s = doc.data();
   if (s.recordSynced) return false;
@@ -65,7 +67,7 @@ for (const doc of dueGroupSchedules) {
 }
 
 // 2) 개인 일정 — 등록한 본인
-const personalSnap = await db.collection("personalSchedules").where("category", "==", "머더미스터리").get();
+const personalSnap = await db.collection("personalSchedules").where("category", "in", RECORD_CATEGORIES).get();
 const duePersonalSchedules = personalSnap.docs.filter((doc) => {
   const s = doc.data();
   if (s.recordSynced) return false;

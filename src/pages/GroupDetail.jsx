@@ -22,7 +22,7 @@ const TABS = [
   { id: "unplayed", label: "같이 안한 머미" },
 ];
 
-const CATEGORIES = ["머더미스터리", "방탈출", "보드게임", "기타"];
+const CATEGORIES = ["머더미스터리", "크라임씬", "방탈출", "보드게임", "기타"];
 const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "", negotiating: false };
 
 export default function GroupDetail() {
@@ -287,6 +287,7 @@ function SchedulesTab({ group, profile, members }) {
   const [candidatesFor, setCandidatesFor] = useState(null);
   const [scenarios, setScenarios] = useState([]);
   const [showTitleSuggestions, setShowTitleSuggestions] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   async function load() {
     try {
@@ -339,6 +340,12 @@ function SchedulesTab({ group, profile, members }) {
       return (a.datetime || "").localeCompare(b.datetime || "");
     });
   }, [items]);
+
+  const displayItems = useMemo(() => {
+    if (!sortedItems) return sortedItems;
+    if (categoryFilter === "all") return sortedItems;
+    return sortedItems.filter((s) => (s.category || "머더미스터리") === categoryFilter);
+  }, [sortedItems, categoryFilter]);
 
   function startCreate() {
     setEditingId(null);
@@ -534,14 +541,37 @@ function SchedulesTab({ group, profile, members }) {
       {loadError && (
         <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{loadError}</div>
       )}
+
+      {items && items.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+          {["all", ...CATEGORIES].map((c) => (
+            <button
+              type="button"
+              key={c}
+              onClick={() => setCategoryFilter(c)}
+              style={{
+                padding: "6px 12px", borderRadius: 999, fontSize: 12.5, cursor: "pointer",
+                border: `1.5px solid ${categoryFilter === c ? "var(--accent)" : "var(--border)"}`,
+                background: categoryFilter === c ? "var(--accent-dim)" : "transparent",
+                color: categoryFilter === c ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {c === "all" ? "전체" : c}
+            </button>
+          ))}
+        </div>
+      )}
+
       {items === null ? (
         <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
       ) : items.length === 0 ? (
         <Card><EmptyState>아직 등록된 일정이 없어요.</EmptyState></Card>
+      ) : displayItems.length === 0 ? (
+        <Card><EmptyState>이 카테고리에는 등록된 일정이 없어요.</EmptyState></Card>
       ) : (
       <ScrollBox maxHeight={520}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {sortedItems.map((s) => {
+        {displayItems.map((s) => {
           const isNegotiating = (s.status || "confirmed") === "negotiating";
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
