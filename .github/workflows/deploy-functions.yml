@@ -18,4 +18,4 @@ jobs:
           node-version: 22
       - run: npm install
         working-directory: functions
-      - run: npx firebase-tools deploy --only functions --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}"
+      - run: npx firebase-tools deploy --only functions --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}" --force
