@@ -220,11 +220,12 @@ export default function Agenda() {
       <PageHeader eyebrow="MY AGENDA" title="일정" />
 
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>일정 전날 알림</div>
+        <div style={{ fontSize: 13.5, fontWeight: 600 }}>일정 알림</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>참석하기로 한 모임 일정 전날, 그리고 시작 1시간 전에 알림이 가요.</div>
         {notifEnabled && <div style={{ fontSize: 13, color: "var(--success)" }}>알림이 켜져 있어요 ✓</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <OutlineButton style={{ flex: "1 1 160px" }} onClick={handleEnableNotifications} disabled={notifStatus === "설정 중…"}>
-            {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? "알림 다시 설정" : "일정 전날 알림 받기"}
+            {notifStatus === "설정 중…" ? "설정 중…" : notifEnabled ? "알림 다시 설정" : "일정 알림 받기"}
           </OutlineButton>
           {notifEnabled && (
             <OutlineButton style={{ flex: "1 1 160px" }} onClick={sendTestNotification} disabled={testStatus === "요청 중…"}>
