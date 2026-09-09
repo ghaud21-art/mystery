@@ -18,12 +18,16 @@ const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
 initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
+// AI 일괄 등록이 note 필드에 장소/인원수 같은 메타데이터를 채워넣는 경우가 많아서
+// (예: "퍼즐팩토리 홍대", "5인, 추리는 어느") note만으로는 "진짜 내용"인지 판단 불가.
+// 그래서 캐릭터/별점/인생머미 표시처럼 사용자가 직접 남긴 확실한 신호만 높게 치고,
+// note는 충분히 길 때만(짧은 장소·인원 메모가 아닐 가능성이 높을 때) 약하게 인정한다.
 function completeness(r) {
   let score = 0;
-  if (r.character && String(r.character).trim()) score++;
-  if (r.rating) score++;
-  if (r.note && String(r.note).trim()) score++;
-  if (r.favorite) score++;
+  if (r.character && String(r.character).trim()) score += 2;
+  if (r.rating) score += 2;
+  if (r.favorite) score += 1;
+  if (r.note && String(r.note).trim().length >= 15) score += 1;
   return score;
 }
 
