@@ -11,6 +11,14 @@ initializeApp();
 const db = getFirestore();
 const messaging = getMessaging();
 
+// 안드로이드는 기본(보통) 우선순위 FCM 메시지를 절전 모드에서 몇 시간씩 미룰 수 있음
+// (특히 TWA로 설치한 앱은 일반 브라우저 탭보다 더 엄격하게 취급됨). 알림이 늦지 않게
+// 항상 높은 우선순위로 보낸다.
+const URGENT_DELIVERY = {
+  android: { priority: "high" },
+  webpush: { headers: { Urgency: "high", TTL: "86400" } },
+};
+
 // testNotifications/{id} 문서가 생성되는 즉시(클라이언트가 "테스트 알림 보내기"를 누른 순간)
 // 해당 기기 토큰으로 바로 발송. 더 이상 폴링(GitHub Actions 5분 크론)을 기다리지 않는다.
 export const onTestNotificationCreated = onDocumentCreated("testNotifications/{id}", async (event) => {
@@ -23,6 +31,7 @@ export const onTestNotificationCreated = onDocumentCreated("testNotifications/{i
     await messaging.send({
       token,
       notification: { title: "테스트 알림", body: "이 알림이 보이면 정상적으로 설정된 거예요!" },
+      ...URGENT_DELIVERY,
     });
     await snap.ref.update({ status: "sent", sentAt: FieldValue.serverTimestamp() });
   } catch (err) {
@@ -58,6 +67,7 @@ export const sendDayBeforeReminders = onSchedule({ schedule: "0 0 * * *", timeZo
         title: `내일 "${s.title}" 일정이 있어요`,
         body: `${s.location} · 잊지 말고 참석해주세요!`,
       },
+      ...URGENT_DELIVERY,
     });
   }
 });
@@ -88,6 +98,7 @@ export const sendHourBeforeReminders = onSchedule({ schedule: "every 15 minutes"
             title: `1시간 뒤 "${s.title}" 일정이 있어요`,
             body: `${s.location} · 곧 시작해요!`,
           },
+          ...URGENT_DELIVERY,
         });
       }
     }
