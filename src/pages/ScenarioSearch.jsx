@@ -365,7 +365,7 @@ export default function ScenarioSearch() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {s.publisher && <InfoRow icon="🏢" value={s.publisher} />}
                         {s.playerCount && <InfoRow icon="👥" value={s.playerCount} />}
-                        <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
+                        {s.duration && <InfoRow icon="⏱️" value={`${s.duration} 소요`} />}
                         <InfoRow
                           icon="⭐"
                           value={ratingInfo ? `평균 ${ratingInfo.avg.toFixed(1)} (${ratingInfo.count}명 평가)` : "아직 공개 평점 없음"}
