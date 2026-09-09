@@ -4,6 +4,22 @@ import { db, getMessagingIfSupported } from "./firebase.js";
 
 const PUSH_SCOPE = "/firebase-cloud-messaging-push-scope";
 
+// register()는 서비스워커가 "설치 중"이기만 해도 resolve돼서, 그 직후 바로 구독을 시도하면
+// (특히 모바일에서) "no active Service Worker" 오류로 실패할 수 있음. 실제로 활성화될 때까지 기다림.
+function waitForActivation(registration) {
+  if (registration.active) return Promise.resolve(registration);
+  const worker = registration.installing || registration.waiting;
+  if (!worker) return Promise.resolve(registration);
+  return new Promise((resolve) => {
+    worker.addEventListener("statechange", function handler() {
+      if (worker.state === "activated") {
+        worker.removeEventListener("statechange", handler);
+        resolve(registration);
+      }
+    });
+  });
+}
+
 export async function enableReminderNotifications(uid) {
   if (!("Notification" in window) || !("serviceWorker" in navigator)) {
     throw new Error("이 브라우저는 알림을 지원하지 않아요.");
@@ -22,6 +38,7 @@ export async function enableReminderNotifications(uid) {
   const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
     scope: PUSH_SCOPE,
   });
+  await waitForActivation(registration);
 
   const token = await getToken(messaging, {
     vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
