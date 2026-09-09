@@ -187,16 +187,21 @@ export default function Agenda() {
   const [selectedDate, setSelectedDate] = useState(null);
   const selectedEvents = selectedDate ? eventsByDate[selectedDate] || [] : [];
 
+  // "다가오는 일정"에는 내가 참석하기로 한 모임 일정 + 개인 일정만 모아서 보여줌.
   // 지난 일정도 목록에 남기되(흐리게 표시), 맨 아래로 내려가도록 정렬
   const sortedAgendaItems = useMemo(() => {
     const now = new Date().toISOString();
-    return [...(items || [])]
+    const attendingGroup = (items || [])
+      .filter((s) => s.attendees?.[profile.id] === "yes")
+      .map((s) => ({ ...s, kind: "group" }));
+    const personal = (personalSchedules || []).map((s) => ({ ...s, kind: "personal" }));
+    return [...attendingGroup, ...personal]
       .map((s) => ({ ...s, isPast: !!((s.endDatetime || s.datetime) && (s.endDatetime || s.datetime) < now) }))
       .sort((a, b) => {
         if (a.isPast !== b.isPast) return a.isPast ? 1 : -1;
         return (a.datetime || "").localeCompare(b.datetime || "");
       });
-  }, [items]);
+  }, [items, personalSchedules, profile.id]);
 
   const displayAgendaItems = useMemo(() => {
     if (upcomingCategoryFilter === "all") return sortedAgendaItems;
@@ -273,7 +278,7 @@ export default function Agenda() {
 
         <Card style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>다가오는 일정</div>
-          {items && items.length > 0 && (
+          {items && sortedAgendaItems.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {ALL_CATEGORIES.map((c) => (
                 <button
@@ -302,20 +307,25 @@ export default function Agenda() {
             </EmptyState>
           ) : (
             <ScrollBox maxHeight="clamp(280px, calc(100vh - 460px), 520px)">
-              {displayAgendaItems.map((s) => (
-                <Link key={s.id} to={`/schedule/${s.groupId}`} style={{ opacity: s.isPast ? 0.5 : 1 }}>
+              {displayAgendaItems.map((s) => {
+                const row = (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.groupName}</div>
+                      <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.kind === "group" ? s.groupName : `개인 · ${s.category}`}</div>
                       <div style={{ fontSize: 15, fontWeight: 700 }}>{s.title}</div>
                       <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{formatDate(s.datetime)} · {s.location}</div>
                     </div>
-                    <span style={{ fontSize: 11.5, color: s.attendees?.[profile.id] === "yes" ? "var(--success)" : "var(--text-sub)" }}>
-                      {s.isPast ? "종료" : s.attendees?.[profile.id] === "yes" ? "참석 예정" : "미정"}
+                    <span style={{ fontSize: 11.5, color: s.isPast ? "var(--text-sub)" : "var(--success)" }}>
+                      {s.isPast ? "종료" : "참석 예정"}
                     </span>
                   </div>
-                </Link>
-              ))}
+                );
+                return s.kind === "group" ? (
+                  <Link key={s.id} to={`/schedule/${s.groupId}`} style={{ opacity: s.isPast ? 0.5 : 1 }}>{row}</Link>
+                ) : (
+                  <div key={s.id} style={{ opacity: s.isPast ? 0.5 : 1 }}>{row}</div>
+                );
+              })}
             </ScrollBox>
           )}
         </Card>
