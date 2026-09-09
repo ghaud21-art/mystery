@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query,
+  addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query,
   serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -28,13 +28,14 @@ const EMPTY_FORM = { category: CATEGORIES[0], title: "", location: "", datetime:
 export default function GroupDetail() {
   const { groupId } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, setProfile } = useAuth();
   const [group, setGroup] = useState(null);
   const [members, setMembers] = useState([]);
   const [tab, setTab] = useState("schedules");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [friends, setFriends] = useState([]);
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "groups", groupId), (snap) => {
@@ -101,9 +102,15 @@ export default function GroupDetail() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", maxWidth: "100%" }}>
               <div style={{ display: "flex" }}>
                 {members.slice(0, 6).map((m) => (
-                  <div key={m.id} title={displayName(m)} style={{ marginLeft: -8 }}>
+                  <button
+                    type="button"
+                    key={m.id}
+                    title={displayName(m)}
+                    onClick={() => setSelectedMemberId(m.id)}
+                    style={{ marginLeft: -8, padding: 0, background: "none", border: "none", cursor: "pointer", lineHeight: 0 }}
+                  >
                     <Avatar profile={m} size={32} style={{ fontSize: 14, border: "2px solid var(--bg)" }} />
-                  </div>
+                  </button>
                 ))}
                 {members.length > 6 && (
                   <div style={{
@@ -204,6 +211,101 @@ export default function GroupDetail() {
       {tab === "availability" && <AvailabilityTab members={members} profile={profile} />}
       {tab === "compat" && <CompatTab members={members} />}
       {tab === "unplayed" && <UnplayedTab members={members} />}
+
+      {selectedMemberId && (
+        <MemberInfoModal
+          member={members.find((m) => m.id === selectedMemberId)}
+          profile={profile}
+          setProfile={setProfile}
+          onClose={() => setSelectedMemberId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MemberInfoModal({ member, profile, setProfile, onClose }) {
+  const [requestState, setRequestState] = useState("loading"); // loading | none | friend | incoming | outgoing | self
+  const [incomingReq, setIncomingReq] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!member) return;
+    if (member.id === profile.id) { setRequestState("self"); return; }
+    if ((profile.friends || []).includes(member.id)) { setRequestState("friend"); return; }
+
+    (async () => {
+      const [inSnap, outSnap] = await Promise.all([
+        getDocs(query(collection(db, "friendRequests"), where("fromUid", "==", member.id), where("toUid", "==", profile.id), where("status", "==", "pending"))),
+        getDocs(query(collection(db, "friendRequests"), where("fromUid", "==", profile.id), where("toUid", "==", member.id))),
+      ]);
+      if (!inSnap.empty) {
+        setIncomingReq({ id: inSnap.docs[0].id, ...inSnap.docs[0].data() });
+        setRequestState("incoming");
+      } else if (!outSnap.empty && outSnap.docs.some((d) => d.data().status === "pending")) {
+        setRequestState("outgoing");
+      } else {
+        setRequestState("none");
+      }
+    })();
+  }, [member?.id, profile.id, profile.friends]);
+
+  if (!member) return null;
+
+  async function sendRequest() {
+    setBusy(true);
+    await addDoc(collection(db, "friendRequests"), { fromUid: profile.id, toUid: member.id, status: "pending" });
+    setBusy(false);
+    setRequestState("outgoing");
+  }
+
+  async function acceptRequest() {
+    setBusy(true);
+    await updateDoc(doc(db, "friendRequests", incomingReq.id), { status: "accepted" });
+    await updateDoc(doc(db, "users", profile.id), { friends: arrayUnion(member.id) });
+    setProfile((p) => ({ ...p, friends: [...new Set([...(p.friends || []), member.id])] }));
+    setBusy(false);
+    setRequestState("friend");
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 100,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 320 }}>
+        <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center" }}>
+          <Avatar profile={member} size={64} style={{ fontSize: 28 }} />
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{displayName(member)}</div>
+          {member.style && <div style={{ fontSize: 12.5, color: "var(--text-sub)" }}>{TYPE_META[member.style]?.icon} {TYPE_META[member.style]?.title}</div>}
+
+          <div style={{ width: "100%", marginTop: 6 }}>
+            {requestState === "loading" && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>확인 중…</span>}
+            {requestState === "self" && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>나예요</span>}
+            {requestState === "friend" && (
+              <OutlineButton disabled style={{ width: "100%" }}>✓ 이미 친구예요</OutlineButton>
+            )}
+            {requestState === "none" && (
+              <PrimaryButton style={{ width: "100%" }} onClick={sendRequest} disabled={busy}>
+                {busy ? "요청 중…" : "+ 친구 추가"}
+              </PrimaryButton>
+            )}
+            {requestState === "outgoing" && (
+              <OutlineButton disabled style={{ width: "100%" }}>친구 요청 보냄</OutlineButton>
+            )}
+            {requestState === "incoming" && (
+              <PrimaryButton style={{ width: "100%" }} onClick={acceptRequest} disabled={busy}>
+                {busy ? "처리 중…" : "친구 요청 수락하기"}
+              </PrimaryButton>
+            )}
+          </div>
+
+          <OutlineButton style={{ width: "100%" }} onClick={onClose}>닫기</OutlineButton>
+        </Card>
+      </div>
     </div>
   );
 }
