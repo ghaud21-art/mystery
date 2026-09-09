@@ -363,8 +363,8 @@ export default function ScenarioSearch() {
                         </button>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
-                        <InfoRow icon="👥" value={s.playerCount || "인원 미상"} />
+                        {s.publisher && <InfoRow icon="🏢" value={s.publisher} />}
+                        {s.playerCount && <InfoRow icon="👥" value={s.playerCount} />}
                         <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
                         <InfoRow
                           icon="⭐"
