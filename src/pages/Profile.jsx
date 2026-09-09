@@ -20,6 +20,7 @@ export default function Profile() {
 
   const [editing, setEditing] = useState(false);
   const [nickname, setNickname] = useState(profile?.nickname || profile?.name || "");
+  const [nicknameError, setNicknameError] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState(profile?.avatarEmoji || "");
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -50,14 +51,33 @@ export default function Profile() {
 
   function startEdit() {
     setNickname(profile?.nickname || profile?.name || "");
+    setNicknameError("");
     setAvatarEmoji(profile?.avatarEmoji || "");
     setEditing(true);
   }
 
   async function save(e) {
     e.preventDefault();
+    setNicknameError("");
+    const trimmed = nickname.trim();
+
+    if (trimmed) {
+      const key = normalizeTitle(trimmed);
+      const usersSnap = await getDocs(collection(db, "users"));
+      const taken = usersSnap.docs.some((d) => {
+        if (d.id === profile.id) return false;
+        const other = d.data();
+        const otherName = other.nickname || other.name || "";
+        return otherName && normalizeTitle(otherName) === key;
+      });
+      if (taken) {
+        setNicknameError("이미 비슷한 닉네임을 쓰는 분이 있어요. 다른 닉네임을 써주세요.");
+        return;
+      }
+    }
+
     setSaving(true);
-    const patch = { nickname: nickname.trim() || null, avatarEmoji: avatarEmoji || null };
+    const patch = { nickname: trimmed || null, avatarEmoji: avatarEmoji || null };
     await updateDoc(doc(db, "users", profile.id), patch);
     setProfile((p) => ({ ...p, ...patch }));
     setSaving(false);
@@ -120,11 +140,17 @@ export default function Profile() {
               <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 6 }}>닉네임</label>
               <input
                 value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
+                onChange={(e) => {
+                  setNickname(e.target.value);
+                  if (nicknameError) setNicknameError("");
+                }}
                 maxLength={20}
                 placeholder="화면에 표시될 이름"
                 style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
               />
+              {nicknameError && (
+                <div style={{ fontSize: 11.5, color: "var(--danger)", marginTop: 6 }}>{nicknameError}</div>
+              )}
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", display: "block", marginBottom: 6 }}>프로필 사진</label>
@@ -235,7 +261,17 @@ function BulkRecordImport({ profile }) {
     setSaveStatus("");
     setAnalyzing(true);
     try {
-      const items = await parseBulkRecords(profile, text);
+      const rawItems = await parseBulkRecords(profile, text);
+
+      // AI가 같은 제목을 두 번 뽑아내는 경우가 있어서, 같은 배치 안에서는 첫 번째 것만 남김
+      const seenInBatch = new Set();
+      const items = rawItems.filter((r) => {
+        const key = normalizeTitle(r.scenarioName);
+        if (seenInBatch.has(key)) return false;
+        seenInBatch.add(key);
+        return true;
+      });
+      const skippedDuplicates = rawItems.length - items.length;
 
       const [approvedSnap, myPendingSnap] = await Promise.all([
         getDocs(query(collection(db, "scenarios"), where("status", "==", "approved"))),
@@ -243,18 +279,23 @@ function BulkRecordImport({ profile }) {
       ]);
       const approvedTitles = new Set(approvedSnap.docs.map((d) => normalizeTitle(d.data().title)));
       const myPendingTitles = new Set(myPendingSnap.docs.map((d) => normalizeTitle(d.data().title)));
+      const myPlayedTitles = new Set(profile.playedTitles || []);
 
       const withMatch = items.map((r) => {
         const key = normalizeTitle(r.scenarioName);
         const matchStatus = approvedTitles.has(key) ? "approved" : myPendingTitles.has(key) ? "pending" : "none";
-        return { ...r, matchStatus };
+        return { ...r, matchStatus, alreadyRecorded: myPlayedTitles.has(key) };
       });
 
       setParsed(withMatch);
       setStep(withMatch.some((r) => r.matchStatus !== "none") ? 1 : 2);
-      setSelected(new Set(withMatch.map((_, i) => i)));
+      // 이미 내 기록에 있는 작품은 기본적으로 체크 해제해서 중복 저장을 막음(원하면 직접 다시 체크 가능)
+      setSelected(new Set(withMatch.map((_, i) => i).filter((i) => !withMatch[i].alreadyRecorded)));
       setRequestChoice(
         Object.fromEntries(withMatch.map((r, i) => [i, r.matchStatus === "none" ? "offline" : "none"]))
+      );
+      setSaveStatus(
+        skippedDuplicates > 0 ? `같은 배치 안 중복 ${skippedDuplicates}건은 자동으로 하나만 남겼어요.` : ""
       );
     } catch (err) {
       setError(err.message || "분석에 실패했어요.");
@@ -436,9 +477,13 @@ function BulkImportPreview({ parsed, step, setStep, selected, toggle, requestCho
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{r.scenarioName}</span>
                     <span style={{ fontSize: 10, fontWeight: 600, color: badge.color }}>{badge.label}</span>
+                    {r.alreadyRecorded && (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--warning, #d97706)" }}>⚠ 이미 기록에 있음</span>
+                    )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
                     {[r.character, r.rating ? `★${r.rating}` : null, r.date].filter(Boolean).join(" · ") || "추가 정보 없음"}
+                    {r.alreadyRecorded ? " · 중복 방지를 위해 기본적으로 선택 해제했어요. 진짜 재플레이라면 다시 체크해주세요." : ""}
                   </div>
                 </div>
               </label>

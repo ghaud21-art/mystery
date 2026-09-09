@@ -323,7 +323,7 @@ export default function ScenarioSearch() {
                         />
                       </div>
 
-                      {openReviewsId === s.id && <ScenarioReviews scenarioTitle={s.title} />}
+                      {openReviewsId === s.id && <ScenarioReviews scenarioTitle={s.title} played={played} />}
 
                       {played ? (
                         <OutlineButton disabled style={{ width: "100%", height: 32, fontSize: 12, color: "var(--text-sub)" }}>
@@ -423,11 +423,12 @@ function FriendsUnplayedPanel({ scenario, friends }) {
   );
 }
 
-function ScenarioReviews({ scenarioTitle }) {
+function ScenarioReviews({ scenarioTitle, played }) {
   const [reviews, setReviews] = useState(null);
   const [revealed, setRevealed] = useState({});
 
   useEffect(() => {
+    if (!played) return;
     (async () => {
       const snap = await getDocs(
         query(collection(db, "records"), where("scenarioName", "==", scenarioTitle), where("public", "==", true))
@@ -438,7 +439,18 @@ function ScenarioReviews({ scenarioTitle }) {
       const usersById = Object.fromEntries(userDocs.filter((d) => d.exists()).map((d) => [d.id, { id: d.id, ...d.data() }]));
       setReviews(records.map((r) => ({ ...r, user: usersById[r.userId] })).filter((r) => r.user));
     })();
-  }, [scenarioTitle]);
+  }, [scenarioTitle, played]);
+
+  if (!played) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-sub)" }}>다른 사람이 공개한 감상평</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+          이 작품을 플레이하고 기록을 남기면 다른 사람의 감상평을 볼 수 있어요.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
