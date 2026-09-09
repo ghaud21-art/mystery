@@ -171,7 +171,7 @@ export default function Records() {
           matches.map((m) => ({
             id: m.id,
             oldTitle: candidates.find((r) => r.id === m.id)?.scenarioName || "",
-            newTitle: m.matchedTitle,
+            newTitles: m.matchedTitles,
             apply: true,
           }))
         );
@@ -194,13 +194,37 @@ export default function Records() {
       return;
     }
     setAiCleanupApplying(true);
+    let splitCount = 0;
     for (const s of toApply) {
-      await updateDoc(doc(db, "records", s.id), { scenarioName: s.newTitle });
+      const [firstTitle, ...restTitles] = s.newTitles;
+      await updateDoc(doc(db, "records", s.id), { scenarioName: firstTitle });
+      if (restTitles.length > 0) {
+        const original = (records || []).find((r) => r.id === s.id);
+        splitCount++;
+        for (const title of restTitles) {
+          await addDoc(collection(db, "records"), {
+            userId: profile.id,
+            scenarioName: title,
+            character: original?.character || "",
+            rating: original?.rating ?? null,
+            note: original?.note || "",
+            date: original?.date || new Date().toISOString().slice(0, 10),
+            spoiler: original?.spoiler !== false,
+            favorite: !!original?.favorite,
+            public: !!original?.public,
+            createdAt: serverTimestamp(),
+          });
+        }
+      }
     }
     await syncPlayedTitles(profile.id);
     setAiCleanupApplying(false);
     setAiCleanupSuggestions(null);
-    setAiCleanupStatus(`${toApply.length}건 정리했어요!`);
+    setAiCleanupStatus(
+      splitCount > 0
+        ? `${toApply.length}건 정리했어요! (그중 ${splitCount}건은 여러 편으로 나눠서 기록을 추가했어요)`
+        : `${toApply.length}건 정리했어요!`
+    );
     load();
   }
 
@@ -277,7 +301,12 @@ export default function Records() {
                 <div style={{ fontSize: 12.5 }}>
                   <span style={{ color: "var(--text-sub)", textDecoration: "line-through" }}>{s.oldTitle}</span>
                   {" → "}
-                  <span style={{ fontWeight: 600 }}>{s.newTitle}</span>
+                  <span style={{ fontWeight: 600 }}>{s.newTitles.join(", ")}</span>
+                  {s.newTitles.length > 1 && (
+                    <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 2 }}>
+                      기록 1건이 {s.newTitles.length}편으로 나눠져요 (캐릭터·별점·메모는 그대로 복사돼요).
+                    </div>
+                  )}
                 </div>
               </label>
             ))}

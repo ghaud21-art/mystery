@@ -125,10 +125,11 @@ export async function matchRecordsToCanonicalTitles(profile, items, canonicalTit
     "당신은 머더미스터리·크라임씬·스크립트킬 시나리오 제목 정리 도우미입니다.",
     "[정식 제목 목록]은 서비스에 정식 등록된 작품 제목들입니다.",
     "[내 기록 제목 목록]은 사용자가 예전에 직접 입력해서 표기가 다를 수 있는(오타, 띄어쓰기 차이, 줄임말, 부제 생략 등) 제목들이고, 각 항목은 {id, scenarioName} 형태입니다.",
-    "각 기록이 [정식 제목 목록] 중 하나와 같은 작품을 가리키는 게 '확실할' 때만 매칭하세요.",
+    "각 기록이 [정식 제목 목록] 중 하나(또는 여러 개)와 같은 작품을 가리키는 게 '확실할' 때만 매칭하세요.",
+    "특히 기록 제목이 \"OO 1,2\"처럼 여러 편(시리즈/파트)을 한 줄에 같이 적어둔 것이고, [정식 제목 목록]에 \"OO 1\", \"OO 2\"처럼 각각 따로 등록되어 있다면, matchedTitles에 해당하는 정식 제목들을 전부 배열로 담아 알려주세요 (한 기록이 여러 정식 제목에 대응하는 경우).",
     "다른 작품일 수도 있거나 확신이 서지 않으면 그 항목은 결과에서 빼세요. 이미 정식 제목과 완전히 같은 것도 빼세요.",
     "다른 설명 없이 아래 형식의 순수 JSON 배열만 출력하세요 (확실히 매칭된 것만 포함, 없으면 빈 배열 []):",
-    '[{"id": "입력받은 id 그대로", "matchedTitle": "정식 제목 목록에 있는 문자열 그대로"}]',
+    '[{"id": "입력받은 id 그대로", "matchedTitles": ["정식 제목 목록에 있는 문자열 그대로", "..."]}]',
     "",
     "[정식 제목 목록]",
     JSON.stringify(canonicalTitles),
@@ -144,7 +145,9 @@ export async function matchRecordsToCanonicalTitles(profile, items, canonicalTit
 
   const canonicalSet = new Set(canonicalTitles);
   const itemIds = new Set(items.map((i) => i.id));
-  return parsed.filter((r) => r?.id && itemIds.has(r.id) && r?.matchedTitle && canonicalSet.has(r.matchedTitle));
+  return parsed
+    .map((r) => ({ id: r?.id, matchedTitles: Array.isArray(r?.matchedTitles) ? r.matchedTitles : (r?.matchedTitle ? [r.matchedTitle] : []) }))
+    .filter((r) => r.id && itemIds.has(r.id) && r.matchedTitles.length > 0 && r.matchedTitles.every((t) => canonicalSet.has(t)));
 }
 
 export async function parseBulkRecords(profile, rawText) {
