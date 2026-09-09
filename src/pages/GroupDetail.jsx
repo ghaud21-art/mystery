@@ -444,16 +444,6 @@ function SchedulesTab({ group, profile, members }) {
     return scenarios.filter((sc) => sc.title.toLowerCase().includes(q)).slice(0, 6);
   })();
 
-  const markedDates = useMemo(() => {
-    const set = new Set();
-    (items || []).forEach((s) => {
-      if (s.attendees?.[profile.id] === "yes" && s.datetime) {
-        expandDateRange(s.datetime, s.endDatetime).forEach((k) => set.add(k));
-      }
-    });
-    return set;
-  }, [items, profile.id]);
-
   // 지난 일정은 목록 맨 아래로 내림 — 앞쪽은 다가오는 일정(가까운 순), 뒤쪽은 지난 일정(오래된 순 → 최근 순으로 맨 아래)
   const sortedItems = useMemo(() => {
     if (!items) return items;
@@ -471,6 +461,19 @@ function SchedulesTab({ group, profile, members }) {
     if (categoryFilter === "all") return sortedItems;
     return sortedItems.filter((s) => (s.category || "머더미스터리") === categoryFilter);
   }, [sortedItems, categoryFilter]);
+
+  const [selectedDate, setSelectedDate] = useState(null);
+  const eventsByDate = useMemo(() => {
+    const map = {};
+    (sortedItems || []).forEach((s) => {
+      if (!s.datetime) return;
+      expandDateRange(s.datetime, s.endDatetime).forEach((k) => {
+        (map[k] = map[k] || []).push({ label: s.title, color: group.color || PRESET_COLORS[0], detail: s });
+      });
+    });
+    return map;
+  }, [sortedItems, group.color]);
+  const selectedDateEvents = selectedDate ? eventsByDate[selectedDate] || [] : [];
 
   function startCreate() {
     setEditingId(null);
@@ -564,139 +567,78 @@ function SchedulesTab({ group, profile, members }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Card>
-        <MonthCalendar markedDates={markedDates} />
-        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />
-          내가 참석하는 일정
-        </div>
-      </Card>
-
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <PrimaryButton onClick={() => (showForm ? setShowForm(false) : startCreate())}>
-          {showForm ? "닫기" : "+ 일정 추가"}
-        </PrimaryButton>
-      </div>
-
-      {showForm && (
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
         <Card>
-          <form onSubmit={submitForm} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {CATEGORIES.map((c) => (
+          <MonthCalendar
+            eventsByDate={eventsByDate}
+            selectedDate={selectedDate}
+            onSelectDate={(key) => setSelectedDate((d) => (d === key ? null : key))}
+          />
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-sub)" }}>
+            이 모임의 모든 일정이 표시돼요. 날짜를 누르면 그날 일정을 볼 수 있어요.
+          </div>
+
+          {selectedDate && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{selectedDate}</div>
+              {selectedDateEvents.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-sub)" }}>이 날짜엔 일정이 없어요.</div>
+              ) : (
+                selectedDateEvents.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 3, background: e.color, marginTop: 4, flex: "none" }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflowWrap: "break-word" }}>{e.detail.title}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                        {formatDate(e.detail.datetime)}{e.detail.endDatetime ? ` ~ ${formatDate(e.detail.endDatetime)}` : ""} · {e.detail.location}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </Card>
+
+        <Card style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+          <PrimaryButton onClick={() => (showForm ? setShowForm(false) : startCreate())}>
+            {showForm ? "닫기" : "+ 일정 추가"}
+          </PrimaryButton>
+
+          {loadError && (
+            <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{loadError}</div>
+          )}
+
+          {items && items.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["all", ...CATEGORIES].map((c) => (
                 <button
                   type="button"
                   key={c}
-                  onClick={() => setForm({ ...form, category: c })}
+                  onClick={() => setCategoryFilter(c)}
                   style={{
-                    padding: "6px 12px", borderRadius: 999, fontSize: 12.5,
-                    border: `1.5px solid ${form.category === c ? "var(--accent)" : "var(--border)"}`,
-                    background: form.category === c ? "var(--accent-dim)" : "transparent",
-                    color: form.category === c ? "var(--accent)" : "var(--text)",
+                    padding: "6px 12px", borderRadius: 999, fontSize: 12.5, cursor: "pointer",
+                    border: `1.5px solid ${categoryFilter === c ? "var(--accent)" : "var(--border)"}`,
+                    background: categoryFilter === c ? "var(--accent-dim)" : "transparent",
+                    color: categoryFilter === c ? "var(--accent)" : "var(--text-sub)",
                   }}
                 >
-                  {c}
+                  {c === "all" ? "전체" : c}
                 </button>
               ))}
             </div>
-            <div style={{ position: "relative" }}>
-              <input
-                required
-                placeholder={form.category === "머더미스터리" ? "이름 (입력하면 시나리오 목록에서 찾아드려요)" : "이름 (테마/게임 등)"}
-                value={form.title}
-                onChange={(e) => { setForm({ ...form, title: e.target.value }); setShowTitleSuggestions(true); }}
-                onFocus={() => setShowTitleSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
-                style={inputStyle}
-              />
-              {showTitleSuggestions && titleSuggestions.length > 0 && (
-                <div style={{
-                  position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
-                  background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 8,
-                  boxShadow: "0 4px 16px rgba(0,0,0,.15)", overflow: "hidden",
-                }}>
-                  {titleSuggestions.map((sc) => (
-                    <button
-                      type="button"
-                      key={sc.title}
-                      onMouseDown={() => { setForm({ ...form, title: sc.title }); setShowTitleSuggestions(false); }}
-                      style={{
-                        display: "block", width: "100%", textAlign: "left", padding: "9px 14px",
-                        background: "none", border: "none", borderBottom: "1px solid var(--border)", fontSize: 13,
-                      }}
-                    >
-                      {sc.title}
-                      {sc.publisher && <span style={{ color: "var(--text-sub)", fontSize: 11.5 }}> · {sc.publisher}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <input required placeholder="장소" value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
+          )}
 
-            <label style={{
-              display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-sub)",
-              padding: "10px 12px", borderRadius: 8, background: "var(--bg-sub)",
-            }}>
-              <input
-                type="checkbox"
-                checked={form.negotiating}
-                onChange={(e) => setForm({ ...form, negotiating: e.target.checked, datetime: "", endDatetime: "" })}
-              />
-              일정 협의로 등록 (날짜는 나중에 정해요) — 사람들 참여 의향과 가능일을 모아서 확정할 수 있어요
-            </label>
-
-            {!form.negotiating && (
-              <>
-                <Fld label="시작 시각">
-                  <input required type="datetime-local" value={form.datetime}
-                    onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
-                </Fld>
-                <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
-                  <input type="datetime-local" value={form.endDatetime} min={form.datetime}
-                    onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
-                </Fld>
-              </>
-            )}
-            <PrimaryButton type="submit">{editingId ? "수정 저장" : "등록하기"}</PrimaryButton>
-          </form>
-        </Card>
-      )}
-
-      {loadError && (
-        <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{loadError}</div>
-      )}
-
-      {items && items.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-          {["all", ...CATEGORIES].map((c) => (
-            <button
-              type="button"
-              key={c}
-              onClick={() => setCategoryFilter(c)}
-              style={{
-                padding: "6px 12px", borderRadius: 999, fontSize: 12.5, cursor: "pointer",
-                border: `1.5px solid ${categoryFilter === c ? "var(--accent)" : "var(--border)"}`,
-                background: categoryFilter === c ? "var(--accent-dim)" : "transparent",
-                color: categoryFilter === c ? "var(--accent)" : "var(--text-sub)",
-              }}
-            >
-              {c === "all" ? "전체" : c}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {items === null ? (
-        <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
-      ) : items.length === 0 ? (
-        <Card><EmptyState>아직 등록된 일정이 없어요.</EmptyState></Card>
-      ) : displayItems.length === 0 ? (
-        <Card><EmptyState>이 카테고리에는 등록된 일정이 없어요.</EmptyState></Card>
-      ) : (
-      <ScrollBox maxHeight={720}>
-      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
-        {displayItems.map((s) => {
+          {items === null ? (
+            <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
+          ) : items.length === 0 ? (
+            <EmptyState>아직 등록된 일정이 없어요.</EmptyState>
+          ) : displayItems.length === 0 ? (
+            <EmptyState>이 카테고리에는 등록된 일정이 없어요.</EmptyState>
+          ) : (
+          <ScrollBox maxHeight="clamp(320px, calc(100vh - 340px), 720px)">
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {displayItems.map((s) => {
           const isNegotiating = (s.status || "confirmed") === "negotiating";
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
@@ -803,10 +745,97 @@ function SchedulesTab({ group, profile, members }) {
                 </div>
               )}
             </Card>
-          );
-        })}
-        </div>
-      </ScrollBox>
+              );
+            })}
+          </div>
+          </ScrollBox>
+          )}
+        </Card>
+      </div>
+
+      {showForm && (
+        <Card>
+          <form onSubmit={submitForm} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {CATEGORIES.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setForm({ ...form, category: c })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 999, fontSize: 12.5,
+                    border: `1.5px solid ${form.category === c ? "var(--accent)" : "var(--border)"}`,
+                    background: form.category === c ? "var(--accent-dim)" : "transparent",
+                    color: form.category === c ? "var(--accent)" : "var(--text)",
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+            <div style={{ position: "relative" }}>
+              <input
+                required
+                placeholder={form.category === "머더미스터리" ? "이름 (입력하면 시나리오 목록에서 찾아드려요)" : "이름 (테마/게임 등)"}
+                value={form.title}
+                onChange={(e) => { setForm({ ...form, title: e.target.value }); setShowTitleSuggestions(true); }}
+                onFocus={() => setShowTitleSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
+                style={inputStyle}
+              />
+              {showTitleSuggestions && titleSuggestions.length > 0 && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
+                  background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 8,
+                  boxShadow: "0 4px 16px rgba(0,0,0,.15)", overflow: "hidden",
+                }}>
+                  {titleSuggestions.map((sc) => (
+                    <button
+                      type="button"
+                      key={sc.title}
+                      onMouseDown={() => { setForm({ ...form, title: sc.title }); setShowTitleSuggestions(false); }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "9px 14px",
+                        background: "none", border: "none", borderBottom: "1px solid var(--border)", fontSize: 13,
+                      }}
+                    >
+                      {sc.title}
+                      {sc.publisher && <span style={{ color: "var(--text-sub)", fontSize: 11.5 }}> · {sc.publisher}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <input required placeholder="장소" value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
+
+            <label style={{
+              display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-sub)",
+              padding: "10px 12px", borderRadius: 8, background: "var(--bg-sub)",
+            }}>
+              <input
+                type="checkbox"
+                checked={form.negotiating}
+                onChange={(e) => setForm({ ...form, negotiating: e.target.checked, datetime: "", endDatetime: "" })}
+              />
+              일정 협의로 등록 (날짜는 나중에 정해요) — 사람들 참여 의향과 가능일을 모아서 확정할 수 있어요
+            </label>
+
+            {!form.negotiating && (
+              <>
+                <Fld label="시작 시각">
+                  <input required type="datetime-local" value={form.datetime}
+                    onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
+                </Fld>
+                <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
+                  <input type="datetime-local" value={form.endDatetime} min={form.datetime}
+                    onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
+                </Fld>
+              </>
+            )}
+            <PrimaryButton type="submit">{editingId ? "수정 저장" : "등록하기"}</PrimaryButton>
+          </form>
+        </Card>
       )}
     </div>
   );
