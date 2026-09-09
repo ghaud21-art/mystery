@@ -13,6 +13,13 @@ export function normalizeTitle(t) {
   return (t || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
+// 컨텐츠 장르(머더미스터리 / 크라임씬 / 스크립트킬). 기존 시나리오는 genre 필드가 없을 수 있어서
+// 이 배열의 첫 값(머더미스터리)을 기본값으로 취급한다.
+export const GENRES = ["머더미스터리", "크라임씬", "스크립트킬"];
+export function scenarioGenre(s) {
+  return s?.genre || GENRES[0];
+}
+
 export const PLAYER_TABS = [
   { key: "all", label: "전체", test: () => true },
   { key: "2", label: "2인", test: (r) => r.min <= 2 && r.max >= 2 },

@@ -3,14 +3,14 @@ import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, quer
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
-import { normalizeTitle, parsePlayerRange, PLAYER_TABS } from "../lib/scenarioUtils.js";
+import { GENRES, normalizeTitle, parsePlayerRange, PLAYER_TABS, scenarioGenre } from "../lib/scenarioUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
 
-const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline" };
+const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline", genre: GENRES[0] };
 const CATEGORY_TABS = [
   { key: "offline", label: "오프라인" },
   { key: "online", label: "온라인" },
@@ -19,6 +19,7 @@ const CATEGORY_TABS = [
 export default function ScenarioSearch() {
   const { profile, setProfile } = useAuth();
   const [scenarios, setScenarios] = useState(null);
+  const [genre, setGenre] = useState(GENRES[0]);
   const [category, setCategory] = useState("offline");
   const [playerTab, setPlayerTab] = useState("all");
   const [wishlistOnly, setWishlistOnly] = useState(false);
@@ -116,6 +117,7 @@ export default function ScenarioSearch() {
     const q = search.trim().toLowerCase();
     const tab = PLAYER_TABS.find((t) => t.key === playerTab);
     const list = scenarios
+      .filter((s) => scenarioGenre(s) === genre)
       .filter((s) => (s.category || "offline") === category)
       .filter((s) => {
         if (playerTab === "all") return true;
@@ -126,7 +128,7 @@ export default function ScenarioSearch() {
       .filter((s) => !unplayedOnly || !playedTitles || !playedTitles.has(normalizeTitle(s.title)))
       .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
     return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search, category, playerTab, wishlistOnly, unplayedOnly, profile?.wishlist, playedTitles]);
+  }, [scenarios, search, genre, category, playerTab, wishlistOnly, unplayedOnly, profile?.wishlist, playedTitles]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -157,21 +159,39 @@ export default function ScenarioSearch() {
 
   return (
     <div className="fade-in">
-      <PageHeader eyebrow="SCENARIO DB" title="시나리오 찾기" />
+      <PageHeader eyebrow="CONTENT DB" title="컨텐츠 검색" />
 
       <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 20, alignItems: "start" }}>
       <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>머더미스터리 시나리오 검색</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>컨텐츠 검색</div>
           <PrimaryButton
             style={{ height: 36, padding: "0 14px", fontSize: 12.5, whiteSpace: "nowrap" }}
             onClick={() => {
-              if (!showForm) setForm({ ...EMPTY_FORM, category });
+              if (!showForm) setForm({ ...EMPTY_FORM, category, genre });
               setShowForm((s) => !s);
             }}
           >
             {showForm ? "닫기" : "+ 목록에 없는 작품 등록 요청"}
           </PrimaryButton>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          {GENRES.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setGenre(g)}
+              style={{
+                flex: 1, height: 36, borderRadius: 8, fontSize: 13, fontWeight: 600,
+                border: `1.5px solid ${genre === g ? "var(--accent)" : "var(--border)"}`,
+                background: genre === g ? "var(--accent-dim)" : "transparent",
+                color: genre === g ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {g}
+            </button>
+          ))}
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
@@ -246,6 +266,23 @@ export default function ScenarioSearch() {
 
         {showForm && (
           <form onSubmit={submitRequest} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 10, background: "var(--bg-sub)" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {GENRES.map((g) => (
+                <button
+                  type="button"
+                  key={g}
+                  onClick={() => setForm({ ...form, genre: g })}
+                  style={{
+                    flex: 1, height: 34, borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                    border: `1.5px solid ${form.genre === g ? "var(--accent)" : "var(--border)"}`,
+                    background: form.genre === g ? "var(--accent-dim)" : "transparent",
+                    color: form.genre === g ? "var(--accent)" : "var(--text-sub)",
+                  }}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
               {CATEGORY_TABS.map((t) => (
                 <button

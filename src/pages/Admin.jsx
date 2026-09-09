@@ -3,10 +3,11 @@ import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where }
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { AI_FREE_LIMIT } from "../lib/ai.js";
+import { GENRES, scenarioGenre } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, PageHeader, ScrollBox } from "../components/ui.jsx";
 
-const SCENARIO_EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline" };
+const SCENARIO_EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline", genre: GENRES[0] };
 const CATEGORY_LABEL = { offline: "오프라인", online: "온라인" };
 
 export default function Admin() {
@@ -49,6 +50,7 @@ export default function Admin() {
     setScenarioForm({
       title: s.title || "", publisher: s.publisher || "", playerCount: s.playerCount || "",
       duration: s.duration || "", description: s.description || "", category: s.category || "offline",
+      genre: scenarioGenre(s),
     });
   }
 
@@ -98,6 +100,23 @@ export default function Admin() {
         onSubmit={(e) => saveScenario(e)}
         style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0", borderBottom: "1px solid var(--border)" }}
       >
+        <div style={{ display: "flex", gap: 8 }}>
+          {GENRES.map((g) => (
+            <button
+              type="button"
+              key={g}
+              onClick={() => setScenarioForm({ ...scenarioForm, genre: g })}
+              style={{
+                flex: 1, height: 30, borderRadius: 8, fontSize: 11.5, fontWeight: 600,
+                border: `1.5px solid ${scenarioForm.genre === g ? "var(--accent)" : "var(--border)"}`,
+                background: scenarioForm.genre === g ? "var(--accent-dim)" : "transparent",
+                color: scenarioForm.genre === g ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
             <button
@@ -278,6 +297,9 @@ export default function Admin() {
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", flexWrap: "wrap", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ flex: "1 1 160px", minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-sub)", border: "1px solid var(--border)", borderRadius: 999, padding: "1px 7px" }}>
+                      {scenarioGenre(s)}
+                    </span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", borderRadius: 999, padding: "1px 7px" }}>
                       {CATEGORY_LABEL[s.category || "offline"]}
                     </span>
