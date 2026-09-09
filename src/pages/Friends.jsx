@@ -27,6 +27,8 @@ export default function Friends() {
   const [expandedFriendId, setExpandedFriendId] = useState(null);
   const [selectedFriendIds, setSelectedFriendIds] = useState(new Set());
   const [partnerCounts, setPartnerCounts] = useState({});
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -58,12 +60,19 @@ export default function Friends() {
     })();
   }, [profile?.friends]);
 
-  useEffect(() => {
-    (async () => {
+  // 유저 검색 자동완성용 전체 목록은 페이지를 열 때마다 미리 읽어오지 않고,
+  // 검색창을 실제로 사용할 때(포커스/입력 시작)만 한 번 불러와서 캐싱함 — Firestore 읽기 절약.
+  async function ensureUsersLoaded() {
+    if (usersLoaded || loadingUsers) return;
+    setLoadingUsers(true);
+    try {
       const snap = await getDocs(query(collection(db, "users")));
       setAllUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    })();
-  }, []);
+      setUsersLoaded(true);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }
 
   async function loadRequests() {
     if (!profile?.id) return;
@@ -172,8 +181,8 @@ export default function Friends() {
           <input
             placeholder="닉네임으로 친구 검색"
             value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
-            onFocus={() => setShowSuggestions(true)}
+            onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); ensureUsersLoaded(); }}
+            onFocus={() => { setShowSuggestions(true); ensureUsersLoaded(); }}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
             style={{
               width: "100%", padding: "10px 14px", borderRadius: 8,
@@ -186,7 +195,11 @@ export default function Friends() {
               background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 8,
               boxShadow: "0 4px 16px rgba(0,0,0,.15)", overflow: "hidden",
             }}>
-              {suggestions.length === 0 ? (
+              {loadingUsers && !usersLoaded ? (
+                <div style={{ padding: "10px 14px", fontSize: 12.5, color: "var(--text-sub)" }}>
+                  불러오는 중…
+                </div>
+              ) : suggestions.length === 0 ? (
                 <div style={{ padding: "10px 14px", fontSize: 12.5, color: "var(--text-sub)" }}>
                   일치하는 닉네임의 탐정이 없어요.
                 </div>
