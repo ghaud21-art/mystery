@@ -54,7 +54,7 @@ export default function Agenda() {
         status: "pending",
         requestedAt: serverTimestamp(),
       });
-      setTestStatus("요청했어요! 최대 5분 안에 이 기기로 알림이 도착해요.");
+      setTestStatus("요청했어요! 잠시 후 이 기기로 알림이 바로 도착해요.");
     } catch (err) {
       setTestStatus(err.message || "요청에 실패했어요.");
     }
