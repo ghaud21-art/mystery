@@ -328,6 +328,18 @@ function SchedulesTab({ group, profile, members }) {
     return set;
   }, [items, profile.id]);
 
+  // 지난 일정은 목록 맨 아래로 내림 — 앞쪽은 다가오는 일정(가까운 순), 뒤쪽은 지난 일정(오래된 순 → 최근 순으로 맨 아래)
+  const sortedItems = useMemo(() => {
+    if (!items) return items;
+    const now = new Date().toISOString();
+    return [...items].sort((a, b) => {
+      const aPast = (a.endDatetime || a.datetime) && (a.endDatetime || a.datetime) < now;
+      const bPast = (b.endDatetime || b.datetime) && (b.endDatetime || b.datetime) < now;
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      return (a.datetime || "").localeCompare(b.datetime || "");
+    });
+  }, [items]);
+
   function startCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
@@ -529,7 +541,7 @@ function SchedulesTab({ group, profile, members }) {
       ) : (
       <ScrollBox maxHeight={520}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {items.map((s) => {
+        {sortedItems.map((s) => {
           const isNegotiating = (s.status || "confirmed") === "negotiating";
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
           const mine = s.attendees?.[profile.id];
