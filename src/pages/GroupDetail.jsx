@@ -35,7 +35,7 @@ export default function GroupDetail() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [friends, setFriends] = useState([]);
-  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [showMembersModal, setShowMembersModal] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "groups", groupId), (snap) => {
@@ -100,26 +100,30 @@ export default function GroupDetail() {
           title={group.name}
           action={
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", maxWidth: "100%" }}>
-              <div style={{ display: "flex" }}>
+              <div style={{ display: "flex" }} title="모임 멤버 보기">
                 {members.slice(0, 6).map((m) => (
                   <button
                     type="button"
                     key={m.id}
                     title={displayName(m)}
-                    onClick={() => setSelectedMemberId(m.id)}
+                    onClick={() => setShowMembersModal(true)}
                     style={{ marginLeft: -8, padding: 0, background: "none", border: "none", cursor: "pointer", lineHeight: 0 }}
                   >
                     <Avatar profile={m} size={32} style={{ fontSize: 14, border: "2px solid var(--bg)" }} />
                   </button>
                 ))}
                 {members.length > 6 && (
-                  <div style={{
-                    marginLeft: -8, width: 32, height: 32, borderRadius: "50%", background: "var(--bg-sub)",
-                    border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 11, color: "var(--text-sub)", flex: "none",
-                  }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowMembersModal(true)}
+                    style={{
+                      marginLeft: -8, width: 32, height: 32, borderRadius: "50%", background: "var(--bg-sub)",
+                      border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, color: "var(--text-sub)", flex: "none", padding: 0, cursor: "pointer",
+                    }}
+                  >
                     +{members.length - 6}
-                  </div>
+                  </button>
                 )}
               </div>
               <OutlineButton
@@ -212,60 +216,64 @@ export default function GroupDetail() {
       {tab === "compat" && <CompatTab members={members} />}
       {tab === "unplayed" && <UnplayedTab members={members} />}
 
-      {selectedMemberId && (
-        <MemberInfoModal
-          member={members.find((m) => m.id === selectedMemberId)}
+      {showMembersModal && (
+        <GroupMembersModal
+          members={members}
           profile={profile}
           setProfile={setProfile}
-          onClose={() => setSelectedMemberId(null)}
+          onClose={() => setShowMembersModal(false)}
         />
       )}
     </div>
   );
 }
 
-function MemberInfoModal({ member, profile, setProfile, onClose }) {
-  const [requestState, setRequestState] = useState("loading"); // loading | none | friend | incoming | outgoing | self
-  const [incomingReq, setIncomingReq] = useState(null);
-  const [busy, setBusy] = useState(false);
+function GroupMembersModal({ members, profile, setProfile, onClose }) {
+  // memberId -> "loading" | "none" | "friend" | "incoming" | "outgoing" | "self"
+  const [states, setStates] = useState({});
+  const [incomingReqByUid, setIncomingReqByUid] = useState({});
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
-    if (!member) return;
-    if (member.id === profile.id) { setRequestState("self"); return; }
-    if ((profile.friends || []).includes(member.id)) { setRequestState("friend"); return; }
-
     (async () => {
       const [inSnap, outSnap] = await Promise.all([
-        getDocs(query(collection(db, "friendRequests"), where("fromUid", "==", member.id), where("toUid", "==", profile.id), where("status", "==", "pending"))),
-        getDocs(query(collection(db, "friendRequests"), where("fromUid", "==", profile.id), where("toUid", "==", member.id))),
+        getDocs(query(collection(db, "friendRequests"), where("toUid", "==", profile.id), where("status", "==", "pending"))),
+        getDocs(query(collection(db, "friendRequests"), where("fromUid", "==", profile.id), where("status", "==", "pending"))),
       ]);
-      if (!inSnap.empty) {
-        setIncomingReq({ id: inSnap.docs[0].id, ...inSnap.docs[0].data() });
-        setRequestState("incoming");
-      } else if (!outSnap.empty && outSnap.docs.some((d) => d.data().status === "pending")) {
-        setRequestState("outgoing");
-      } else {
-        setRequestState("none");
-      }
+      const incomingByFromUid = Object.fromEntries(inSnap.docs.map((d) => [d.data().fromUid, { id: d.id, ...d.data() }]));
+      const outgoingToUids = new Set(outSnap.docs.map((d) => d.data().toUid));
+
+      setIncomingReqByUid(incomingByFromUid);
+      setStates(
+        Object.fromEntries(
+          members.map((m) => {
+            if (m.id === profile.id) return [m.id, "self"];
+            if ((profile.friends || []).includes(m.id)) return [m.id, "friend"];
+            if (incomingByFromUid[m.id]) return [m.id, "incoming"];
+            if (outgoingToUids.has(m.id)) return [m.id, "outgoing"];
+            return [m.id, "none"];
+          })
+        )
+      );
     })();
-  }, [member?.id, profile.id, profile.friends]);
+  }, [members, profile.id, profile.friends]);
 
-  if (!member) return null;
-
-  async function sendRequest() {
-    setBusy(true);
+  async function sendRequest(member) {
+    setBusyId(member.id);
     await addDoc(collection(db, "friendRequests"), { fromUid: profile.id, toUid: member.id, status: "pending" });
-    setBusy(false);
-    setRequestState("outgoing");
+    setStates((s) => ({ ...s, [member.id]: "outgoing" }));
+    setBusyId(null);
   }
 
-  async function acceptRequest() {
-    setBusy(true);
-    await updateDoc(doc(db, "friendRequests", incomingReq.id), { status: "accepted" });
+  async function acceptRequest(member) {
+    const req = incomingReqByUid[member.id];
+    if (!req) return;
+    setBusyId(member.id);
+    await updateDoc(doc(db, "friendRequests", req.id), { status: "accepted" });
     await updateDoc(doc(db, "users", profile.id), { friends: arrayUnion(member.id) });
     setProfile((p) => ({ ...p, friends: [...new Set([...(p.friends || []), member.id])] }));
-    setBusy(false);
-    setRequestState("friend");
+    setStates((s) => ({ ...s, [member.id]: "friend" }));
+    setBusyId(null);
   }
 
   return (
@@ -276,34 +284,49 @@ function MemberInfoModal({ member, profile, setProfile, onClose }) {
         display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
       }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 320 }}>
-        <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center" }}>
-          <Avatar profile={member} size={64} style={{ fontSize: 28 }} />
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{displayName(member)}</div>
-          {member.style && <div style={{ fontSize: 12.5, color: "var(--text-sub)" }}>{TYPE_META[member.style]?.icon} {TYPE_META[member.style]?.title}</div>}
-
-          <div style={{ width: "100%", marginTop: 6 }}>
-            {requestState === "loading" && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>확인 중…</span>}
-            {requestState === "self" && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>나예요</span>}
-            {requestState === "friend" && (
-              <OutlineButton disabled style={{ width: "100%" }}>✓ 이미 친구예요</OutlineButton>
-            )}
-            {requestState === "none" && (
-              <PrimaryButton style={{ width: "100%" }} onClick={sendRequest} disabled={busy}>
-                {busy ? "요청 중…" : "+ 친구 추가"}
-              </PrimaryButton>
-            )}
-            {requestState === "outgoing" && (
-              <OutlineButton disabled style={{ width: "100%" }}>친구 요청 보냄</OutlineButton>
-            )}
-            {requestState === "incoming" && (
-              <PrimaryButton style={{ width: "100%" }} onClick={acceptRequest} disabled={busy}>
-                {busy ? "처리 중…" : "친구 요청 수락하기"}
-              </PrimaryButton>
-            )}
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380 }}>
+        <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>모임 멤버 ({members.length}명)</div>
+            <button type="button" onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: "var(--text-sub)", cursor: "pointer", padding: 4 }}>✕</button>
           </div>
 
-          <OutlineButton style={{ width: "100%" }} onClick={onClose}>닫기</OutlineButton>
+          <ScrollBox maxHeight={420}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {members.map((m) => {
+                const state = states[m.id] || "loading";
+                return (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Avatar profile={m} size={40} style={{ fontSize: 17, flex: "none" }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, overflowWrap: "break-word" }}>{displayName(m)}</div>
+                      {m.style && (
+                        <div style={{ fontSize: 11, color: "var(--text-sub)" }}>{TYPE_META[m.style]?.icon} {TYPE_META[m.style]?.title}</div>
+                      )}
+                    </div>
+                    <div style={{ flex: "none" }}>
+                      {state === "loading" && <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>확인 중…</span>}
+                      {state === "self" && <span style={{ fontSize: 11.5, color: "var(--text-sub)" }}>나</span>}
+                      {state === "friend" && <span style={{ fontSize: 11.5, color: "var(--success)" }}>✓ 친구</span>}
+                      {state === "outgoing" && (
+                        <OutlineButton disabled style={{ height: 30, padding: "0 10px", fontSize: 11.5 }}>요청 보냄</OutlineButton>
+                      )}
+                      {state === "none" && (
+                        <OutlineButton style={{ height: 30, padding: "0 10px", fontSize: 11.5 }} onClick={() => sendRequest(m)} disabled={busyId === m.id}>
+                          {busyId === m.id ? "…" : "+ 친구 추가"}
+                        </OutlineButton>
+                      )}
+                      {state === "incoming" && (
+                        <PrimaryButton style={{ height: 30, padding: "0 10px", fontSize: 11.5 }} onClick={() => acceptRequest(m)} disabled={busyId === m.id}>
+                          {busyId === m.id ? "…" : "요청 수락"}
+                        </PrimaryButton>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollBox>
         </Card>
       </div>
     </div>
@@ -435,12 +458,12 @@ function SchedulesTab({ group, profile, members }) {
   const sortedItems = useMemo(() => {
     if (!items) return items;
     const now = new Date().toISOString();
-    return [...items].sort((a, b) => {
-      const aPast = (a.endDatetime || a.datetime) && (a.endDatetime || a.datetime) < now;
-      const bPast = (b.endDatetime || b.datetime) && (b.endDatetime || b.datetime) < now;
-      if (aPast !== bPast) return aPast ? 1 : -1;
-      return (a.datetime || "").localeCompare(b.datetime || "");
-    });
+    return [...items]
+      .map((s) => ({ ...s, isPast: !!((s.endDatetime || s.datetime) && (s.endDatetime || s.datetime) < now) }))
+      .sort((a, b) => {
+        if (a.isPast !== b.isPast) return a.isPast ? 1 : -1;
+        return (a.datetime || "").localeCompare(b.datetime || "");
+      });
   }, [items]);
 
   const displayItems = useMemo(() => {
@@ -671,8 +694,8 @@ function SchedulesTab({ group, profile, members }) {
       ) : displayItems.length === 0 ? (
         <Card><EmptyState>이 카테고리에는 등록된 일정이 없어요.</EmptyState></Card>
       ) : (
-      <ScrollBox maxHeight={520}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <ScrollBox maxHeight={720}>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
         {displayItems.map((s) => {
           const isNegotiating = (s.status || "confirmed") === "negotiating";
           const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
@@ -681,7 +704,7 @@ function SchedulesTab({ group, profile, members }) {
           const candidatesOpen = isNegotiating || candidatesFor === s.id;
           const { candidates, total } = candidatesOpen ? attendeeCandidates(s) : { candidates: [], total: 0 };
           return (
-            <Card key={s.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Card key={s.id} style={{ display: "flex", flexDirection: "column", gap: 12, opacity: s.isPast ? 0.55 : 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <div>
                   {isNegotiating ? (
