@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase";
+import { listenForegroundMessages } from "../lib/notifications.js";
 
 const AuthContext = createContext(null);
 
@@ -69,6 +70,10 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
     return unsub;
+  }, []);
+
+  useEffect(() => {
+    listenForegroundMessages();
   }, []);
 
   const signInWithGoogle = () => signInWithPopup(auth, googleProvider);

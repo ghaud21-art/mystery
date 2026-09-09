@@ -1,5 +1,5 @@
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
-import { getToken } from "firebase/messaging";
+import { getToken, onMessage } from "firebase/messaging";
 import { db, getMessagingIfSupported } from "./firebase.js";
 
 const PUSH_SCOPE = "/firebase-cloud-messaging-push-scope";
@@ -31,4 +31,23 @@ export async function enableReminderNotifications(uid) {
 
   await updateDoc(doc(db, "users", uid), { fcmTokens: arrayUnion(token) });
   return token;
+}
+
+// FCM은 탭이 백그라운드/닫혀 있을 때만 서비스워커가 알아서 OS 알림을 띄워주고,
+// 탭이 열려서 포커스된(포그라운드) 상태일 때는 이 핸들러가 없으면 아무것도 안 보임(조용히 씹힘).
+// 그래서 앱이 켜져 있는 동안엔 여기서 직접 Notification을 띄워줌.
+export async function listenForegroundMessages() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const messaging = await getMessagingIfSupported();
+  if (!messaging) return;
+
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    if (!title) return;
+    try {
+      new Notification(title, { body: body || "", icon: "/icons/icon-192.png" });
+    } catch {
+      // 일부 브라우저(예: 모바일 사파리)는 페이지에서 직접 Notification 생성을 막을 수 있음 — 무시
+    }
+  });
 }
