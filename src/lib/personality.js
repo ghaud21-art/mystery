@@ -137,3 +137,19 @@ export function compatLabel(score) {
   if (score >= 70) return { label: "무난한 팀워크", tone: "neutral" };
   return { label: "도전적 조합 🔥", tone: "danger" };
 }
+
+// 궁합 웹(네트워크) 다이어그램처럼 짧은 라벨이 필요한 곳에서 사용.
+export function compatShortLabel(score) {
+  if (score >= 90) return "천생연분";
+  if (score >= 80) return "좋음";
+  if (score >= 70) return "무난";
+  return "도전적";
+}
+
+// tone(success/info/neutral/danger)을 tokens.css 색상 변수로 매핑.
+export const COMPAT_TONE_COLOR = {
+  success: "var(--success)",
+  info: "var(--accent)",
+  neutral: "var(--text-sub)",
+  danger: "var(--danger)",
+};

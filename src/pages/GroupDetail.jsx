@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
-import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
+import { compatLabel, compatShortLabel, compatWithReason, COMPAT_TONE_COLOR, TYPE_META } from "../lib/personality.js";
 import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
@@ -718,6 +718,7 @@ function AvailabilityTab({ members, profile }) {
 
 function CompatTab({ members }) {
   const [openPair, setOpenPair] = useState(null);
+  const [view, setView] = useState("web");
 
   const pairs = useMemo(() => {
     const list = [];
@@ -733,6 +734,7 @@ function CompatTab({ members }) {
 
   const avg = pairs.length ? Math.round(pairs.reduce((s, p) => s + p.score, 0) / pairs.length) : null;
   const missing = members.filter((m) => !m.style);
+  const openPairData = openPair ? pairs.find((p) => `${p.a.id}-${p.b.id}` === openPair) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -752,49 +754,192 @@ function CompatTab({ members }) {
       {pairs.length === 0 ? (
         <Card><EmptyState>궁합을 보려면 멤버들이 먼저 성향 테스트를 완료해야 해요.</EmptyState></Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {pairs.map(({ a, b, score, base, bonus, reasons }) => {
-            const label = compatLabel(score);
-            const pairKey = `${a.id}-${b.id}`;
-            const open = openPair === pairKey;
-            return (
-              <Card key={pairKey} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setOpenPair(open ? null : pairKey)}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", padding: 0, width: "100%" }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                    <span>{displayAvatar(a) || TYPE_META[a.style].icon} {displayName(a)}</span>
-                    <span style={{ color: "var(--text-sub)" }}>×</span>
-                    <span>{displayAvatar(b) || TYPE_META[b.style].icon} {displayName(b)}</span>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ font: "700 18px ui-monospace,monospace", color: "var(--accent)" }}>{score}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
-                      {label.label}{bonus > 0 && ` (기본 ${base} +${bonus})`}
-                    </div>
-                  </div>
-                </button>
-                {open && (
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                      {displayName(a)} · 💪 {TYPE_META[a.style].strength} / ⚠️ {TYPE_META[a.style].weakness}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
-                      {displayName(b)} · 💪 {TYPE_META[b.style].strength} / ⚠️ {TYPE_META[b.style].weakness}
-                    </div>
-                    {reasons.map((r, i) => (
-                      <div key={i} style={{ fontSize: 11.5, color: "var(--success)" }}>✓ {r}</div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setView("web")}
+              style={{
+                flex: 1, height: 32, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                border: `1.5px solid ${view === "web" ? "var(--accent)" : "var(--border)"}`,
+                background: view === "web" ? "var(--accent-dim)" : "transparent",
+                color: view === "web" ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              🕸️ 웹으로 보기
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              style={{
+                flex: 1, height: 32, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                border: `1.5px solid ${view === "list" ? "var(--accent)" : "var(--border)"}`,
+                background: view === "list" ? "var(--accent-dim)" : "transparent",
+                color: view === "list" ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              📋 목록으로 보기
+            </button>
+          </div>
+
+          {view === "web" ? (
+            <CompatWeb members={members} pairs={pairs} openPair={openPair} setOpenPair={setOpenPair} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {pairs.map(({ a, b, score, base, bonus }) => {
+                const label = compatLabel(score);
+                const pairKey = `${a.id}-${b.id}`;
+                const open = openPair === pairKey;
+                return (
+                  <Card key={pairKey} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenPair(open ? null : pairKey)}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", padding: 0, width: "100%" }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <span>{displayAvatar(a) || TYPE_META[a.style].icon} {displayName(a)}</span>
+                        <span style={{ color: "var(--text-sub)" }}>×</span>
+                        <span>{displayAvatar(b) || TYPE_META[b.style].icon} {displayName(b)}</span>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ font: "700 18px ui-monospace,monospace", color: "var(--accent)" }}>{score}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+                          {label.label}{bonus > 0 && ` (기본 ${base} +${bonus})`}
+                        </div>
+                      </div>
+                    </button>
+                    {open && <PairDetail a={a} b={b} pair={pairs.find((p) => p.a.id === a.id && p.b.id === b.id)} />}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {view === "web" && openPairData && (
+            <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
+                  <span>{displayAvatar(openPairData.a) || TYPE_META[openPairData.a.style].icon} {displayName(openPairData.a)}</span>
+                  <span style={{ color: "var(--text-sub)" }}>×</span>
+                  <span>{displayAvatar(openPairData.b) || TYPE_META[openPairData.b.style].icon} {displayName(openPairData.b)}</span>
+                </div>
+                <div style={{ font: "700 18px ui-monospace,monospace", color: "var(--accent)" }}>{openPairData.score}</div>
+              </div>
+              <PairDetail a={openPairData.a} b={openPairData.b} pair={openPairData} />
+            </Card>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function PairDetail({ a, b, pair }) {
+  if (!pair) return null;
+  return (
+    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+        {displayName(a)} · 💪 {TYPE_META[a.style].strength} / ⚠️ {TYPE_META[a.style].weakness}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+        {displayName(b)} · 💪 {TYPE_META[b.style].strength} / ⚠️ {TYPE_META[b.style].weakness}
+      </div>
+      {pair.reasons.map((r, i) => (
+        <div key={i} style={{ fontSize: 11.5, color: "var(--success)" }}>✓ {r}</div>
+      ))}
+    </div>
+  );
+}
+
+function CompatWeb({ members, pairs, openPair, setOpenPair }) {
+  const [focusId, setFocusId] = useState(null);
+  const nodes = members.filter((m) => m.style);
+  const n = nodes.length;
+
+  const size = Math.max(320, 90 + n * 42);
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size / 2 - 56;
+
+  const positioned = nodes.map((m, i) => {
+    const angle = (-90 + (360 / n) * i) * (Math.PI / 180);
+    return { ...m, x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+  });
+  const byId = Object.fromEntries(positioned.map((m) => [m.id, m]));
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        style={{ width: "100%", maxWidth: 460, height: "auto", display: "block" }}
+      >
+        {pairs.map(({ a, b, score }) => {
+          const pa = byId[a.id], pb = byId[b.id];
+          if (!pa || !pb) return null;
+          const pairKey = `${a.id}-${b.id}`;
+          const tone = compatLabel(score).tone;
+          const color = COMPAT_TONE_COLOR[tone];
+          const dimmed = focusId && a.id !== focusId && b.id !== focusId;
+          const active = openPair === pairKey;
+          const midX = (pa.x + pb.x) / 2;
+          const midY = (pa.y + pb.y) / 2;
+          let angle = (Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180) / Math.PI;
+          if (angle > 90 || angle < -90) angle += 180;
+          return (
+            <g
+              key={pairKey}
+              opacity={dimmed ? 0.15 : 1}
+              style={{ cursor: "pointer" }}
+              onClick={() => setOpenPair(active ? null : pairKey)}
+            >
+              <line
+                x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+                stroke={color} strokeWidth={active ? 4 : 2.5}
+              />
+              <text
+                x={midX} y={midY}
+                transform={`rotate(${angle} ${midX} ${midY})`}
+                textAnchor="middle"
+                dy={-5}
+                fontSize={12}
+                fontWeight={700}
+                fill={color}
+                stroke="var(--card)"
+                strokeWidth={4}
+                paintOrder="stroke"
+              >
+                {compatShortLabel(score)}
+              </text>
+            </g>
+          );
+        })}
+
+        {positioned.map((m) => (
+          <g
+            key={m.id}
+            style={{ cursor: "pointer" }}
+            onClick={() => setFocusId((id) => (id === m.id ? null : m.id))}
+          >
+            <circle
+              cx={m.x} cy={m.y} r={30}
+              fill="var(--bg-sub)"
+              stroke={focusId === m.id ? "var(--accent)" : "var(--border)"}
+              strokeWidth={focusId === m.id ? 3 : 1.5}
+            />
+            <text x={m.x} y={m.y - 2} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--text)">
+              {displayName(m).slice(0, 4)}
+            </text>
+            <text x={m.x} y={m.y + 13} textAnchor="middle" fontSize={9.5} fill="var(--text-sub)">
+              {TYPE_META[m.style]?.title.replace(" 탐정", "") || m.style}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div style={{ fontSize: 11, color: "var(--text-sub)", textAlign: "center" }}>
+        이름을 누르면 그 사람 연결만 볼 수 있고, 선을 누르면 자세한 이유가 아래에 나와요.
+      </div>
+    </Card>
   );
 }
 
