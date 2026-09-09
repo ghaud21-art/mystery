@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { enableReminderNotifications } from "../lib/notifications.js";
 import { expandDateRange } from "../lib/dateUtils.js";
-import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import { PRESET_COLORS } from "../lib/colors.js";
 
@@ -366,20 +366,22 @@ export default function Agenda() {
             <Link to="/schedule" style={{ textDecoration: "underline" }}>모임에서 일정 만들러 가기 →</Link>
           </EmptyState>
         ) : (
-          upcoming.map((s) => (
-            <Link key={s.id} to={`/schedule/${s.groupId}`}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.groupName}</div>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{s.title}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{formatDate(s.datetime)} · {s.location}</div>
+          <ScrollBox maxHeight="clamp(240px, calc(100vh - 480px), 480px)">
+            {upcoming.map((s) => (
+              <Link key={s.id} to={`/schedule/${s.groupId}`}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--accent)" }}>{s.groupName}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{s.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{formatDate(s.datetime)} · {s.location}</div>
+                  </div>
+                  <span style={{ fontSize: 11.5, color: s.attendees?.[profile.id] === "yes" ? "var(--success)" : "var(--text-sub)" }}>
+                    {s.attendees?.[profile.id] === "yes" ? "참석 예정" : "미정"}
+                  </span>
                 </div>
-                <span style={{ fontSize: 11.5, color: s.attendees?.[profile.id] === "yes" ? "var(--success)" : "var(--text-sub)" }}>
-                  {s.attendees?.[profile.id] === "yes" ? "참석 예정" : "미정"}
-                </span>
-              </div>
-            </Link>
-          ))
+              </Link>
+            ))}
+          </ScrollBox>
         )}
       </Card>
     </div>

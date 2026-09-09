@@ -766,7 +766,7 @@ function CompatTab({ members }) {
                 color: view === "web" ? "var(--accent)" : "var(--text-sub)",
               }}
             >
-              🕸️ 웹으로 보기
+              🕸️ 관계도로 보기
             </button>
             <button
               type="button"
