@@ -8,6 +8,7 @@ import { db } from "../lib/firebase.js";
 import { compatLabel, compatWithReason, TYPE_META } from "../lib/personality.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { normalizeTitle, parsePlayerRange } from "../lib/scenarioUtils.js";
+import { computeCoAttendanceCounts } from "../lib/partners.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
 
@@ -25,6 +26,18 @@ export default function Friends() {
   const [busyId, setBusyId] = useState(null);
   const [expandedFriendId, setExpandedFriendId] = useState(null);
   const [selectedFriendIds, setSelectedFriendIds] = useState(new Set());
+  const [partnerCounts, setPartnerCounts] = useState({});
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    (async () => {
+      try {
+        setPartnerCounts(await computeCoAttendanceCounts(profile.id));
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [profile?.id]);
 
   function toggleFriendSelect(id) {
     setSelectedFriendIds((prev) => {
@@ -279,7 +292,10 @@ export default function Friends() {
                             <span style={{ fontSize: 10, color: "var(--text-sub)" }}>{expandedFriendId === f.id ? "▲" : "▾"}</span>
                           </div>
                         </button>
-                        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{f.style ?? "성향 미측정"}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+                          {f.style ?? "성향 미측정"}
+                          {partnerCounts[f.id] > 0 && ` · 함께 ${partnerCounts[f.id]}회`}
+                        </div>
                       </div>
                     </div>
                     {result ? (

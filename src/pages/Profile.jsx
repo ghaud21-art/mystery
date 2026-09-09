@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { addDoc, collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { toPng } from "html-to-image";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
@@ -10,6 +10,7 @@ import { resizeImageToDataUrl } from "../lib/image.js";
 import { canUseAI, KAKAO_CONTACT_URL, parseBulkRecords } from "../lib/ai.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
+import { computeCoAttendanceCounts } from "../lib/partners.js";
 import Avatar from "../components/Avatar.jsx";
 import DetectiveProfileCard from "../components/DetectiveProfileCard.jsx";
 import { AILimitNotice, Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
@@ -26,6 +27,28 @@ export default function Profile() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef(null);
+  const [bestPartners, setBestPartners] = useState(null);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    (async () => {
+      try {
+        const counts = await computeCoAttendanceCounts(profile.id);
+        const topUids = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([uid]) => uid);
+        if (topUids.length === 0) { setBestPartners([]); return; }
+        const docs = await Promise.all(topUids.map((uid) => getDoc(doc(db, "users", uid))));
+        setBestPartners(
+          docs.filter((d) => d.exists()).map((d) => ({ id: d.id, ...d.data(), count: counts[d.id] }))
+        );
+      } catch (err) {
+        console.error(err);
+        setBestPartners([]);
+      }
+    })();
+  }, [profile?.id]);
 
   async function handlePhotoSelected(e) {
     const file = e.target.files?.[0];
@@ -114,6 +137,24 @@ export default function Profile() {
                 <Link to="/style-test"><PrimaryButton>테스트 시작하기</PrimaryButton></Link>
               )}
             </div>
+
+            {bestPartners && bestPartners.length > 0 && (
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+                <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginBottom: 8 }}>베스트 파트너</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {bestPartners.map((p) => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar profile={p} size={30} style={{ fontSize: 13 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0, overflowWrap: "break-word" }}>{displayName(p)}</span>
+                      <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, whiteSpace: "nowrap" }}>함께 {p.count}회</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--text-sub)", marginTop: 8 }}>
+                  같은 모임 일정에 함께 참석(참석하기)한 지난 일정 기준이에요.
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {main && (
