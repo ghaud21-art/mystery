@@ -5,6 +5,7 @@ import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { normalizeTitle, parsePlayerRange, PLAYER_TABS } from "../lib/scenarioUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
+import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
@@ -31,6 +32,8 @@ export default function ScenarioSearch() {
   const [quickForm, setQuickForm] = useState(QUICK_FORM_EMPTY);
   const [savingId, setSavingId] = useState(null);
   const [openReviewsId, setOpenReviewsId] = useState(null);
+  const [friends, setFriends] = useState([]);
+  const [publicRatings, setPublicRatings] = useState({});
 
   async function loadScenarios() {
     const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
@@ -44,6 +47,35 @@ export default function ScenarioSearch() {
 
   useEffect(() => { loadScenarios(); }, []);
   useEffect(() => { if (profile?.id) loadPlayedTitles(); }, [profile?.id]);
+
+  useEffect(() => {
+    (async () => {
+      if (!profile?.friends?.length) { setFriends([]); return; }
+      const docs = await Promise.all(profile.friends.map((uid) => getDoc(doc(db, "users", uid))));
+      setFriends(docs.filter((d) => d.exists()).map((d) => ({ id: d.id, ...d.data() })));
+    })();
+  }, [profile?.friends]);
+
+  useEffect(() => {
+    (async () => {
+      // 공개(public) 감상평의 별점만 모아서 시나리오별 평균을 계산 (비공개 기록은 접근 불가)
+      const snap = await getDocs(query(collection(db, "records"), where("public", "==", true)));
+      const sums = {};
+      snap.docs.forEach((d) => {
+        const r = d.data();
+        if (!r.rating || !r.scenarioName) return;
+        const key = normalizeTitle(r.scenarioName);
+        if (!sums[key]) sums[key] = { sum: 0, count: 0 };
+        sums[key].sum += r.rating;
+        sums[key].count += 1;
+      });
+      const avgMap = {};
+      Object.entries(sums).forEach(([key, { sum, count }]) => { avgMap[key] = { avg: sum / count, count }; });
+      setPublicRatings(avgMap);
+    })();
+  }, []);
+
+  const selectedScenario = openReviewsId ? scenarios?.find((s) => s.id === openReviewsId) : null;
 
   function startQuickAdd(s) {
     setQuickAddId(s.id);
@@ -115,7 +147,8 @@ export default function ScenarioSearch() {
     <div className="fade-in">
       <PageHeader eyebrow="SCENARIO DB" title="시나리오 찾기" />
 
-      <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 20, alignItems: "start" }}>
+      <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div style={{ fontSize: 14, fontWeight: 700 }}>머더미스터리 시나리오 검색</div>
           <PrimaryButton
@@ -256,6 +289,7 @@ export default function ScenarioSearch() {
                   const played = playedTitles?.has(normalizeTitle(s.title));
                   const quickOpen = quickAddId === s.id;
                   const wished = (profile?.wishlist || []).includes(s.id);
+                  const ratingInfo = publicRatings[normalizeTitle(s.title)];
                   return (
                     <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -283,6 +317,10 @@ export default function ScenarioSearch() {
                         <InfoRow icon="🏢" value={s.publisher || "제작사 미상"} />
                         <InfoRow icon="👥" value={s.playerCount || "인원 미상"} />
                         <InfoRow icon="⏱️" value={s.duration ? `${s.duration} 소요` : "시간 미상"} />
+                        <InfoRow
+                          icon="⭐"
+                          value={ratingInfo ? `평균 ${ratingInfo.avg.toFixed(1)} (${ratingInfo.count}명 평가)` : "아직 공개 평점 없음"}
+                        />
                       </div>
 
                       {openReviewsId === s.id && <ScenarioReviews scenarioTitle={s.title} />}
@@ -333,7 +371,55 @@ export default function ScenarioSearch() {
           </>
         )}
       </Card>
+
+      <FriendsUnplayedPanel scenario={selectedScenario} friends={friends} />
+      </div>
     </div>
+  );
+}
+
+function FriendsUnplayedPanel({ scenario, friends }) {
+  if (!scenario) {
+    return (
+      <Card style={{ position: "sticky", top: 20 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>친구 중 안 한 사람</div>
+        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+          시나리오 제목을 누르면, 친구 중 누가 이 작품을 아직 안 했는지 여기에 보여드려요.
+        </div>
+      </Card>
+    );
+  }
+
+  const key = normalizeTitle(scenario.title);
+  const unplayedFriends = friends.filter((f) => !(f.playedTitles || []).includes(key));
+  const playedFriends = friends.filter((f) => (f.playedTitles || []).includes(key));
+
+  return (
+    <Card style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, overflowWrap: "break-word" }}>{scenario.title}</div>
+      <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+        친구 중 안 한 사람 ({unplayedFriends.length}/{friends.length})
+      </div>
+      {friends.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>아직 추가한 친구가 없어요.</div>
+      ) : unplayedFriends.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--text-sub)" }}>친구들 전부 이미 했어요! 🎉</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {unplayedFriends.map((f) => (
+            <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Avatar profile={f} size={28} style={{ fontSize: 13 }} />
+              <span style={{ fontSize: 13 }}>{displayName(f)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {playedFriends.length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--text-sub)", borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+          이미 함: {playedFriends.map((f) => displayName(f)).join(", ")}
+        </div>
+      )}
+    </Card>
   );
 }
 
