@@ -23,7 +23,7 @@ export default function CaseHub() {
     <div className="fade-in">
       <PageHeader eyebrow="CASE FILES" title="사건이 도착했습니다" />
       <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginBottom: 16 }}>
-        매일 도착하는 수사 보고서를 읽고 추리하는 서간형 추리 게임 시리즈예요.
+        생각을 깨울 때 하기 좋은 추리 게임 시리즈입니다.
       </div>
 
       {error && <div style={{ fontSize: 12.5, color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
