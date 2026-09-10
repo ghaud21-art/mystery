@@ -15,7 +15,6 @@ export default function CasePlay() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [choice, setChoice] = useState(null);
   const [essay, setEssay] = useState("");
-  const [finalEssay, setFinalEssay] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null); // {correct, fragment, wrongMessage}
   const [nightBusy, setNightBusy] = useState(false);
@@ -35,7 +34,6 @@ export default function CasePlay() {
       setSelectedDay(res.current ? res.current.day : res.history[res.history.length - 1]?.day || 1);
       setChoice(null);
       setEssay("");
-      setFinalEssay("");
       setFeedback(null);
     } catch (err) {
       setError(err.message);
@@ -73,7 +71,7 @@ export default function CasePlay() {
     setError("");
     try {
       if (state.current.isFinal) {
-        await caseSubmitFinal({ seasonId, choice, essay, finalEssay: finalEssay || undefined });
+        await caseSubmitFinal({ seasonId, choice, essay });
         navigate(`/case/${seasonId}/result`);
         return;
       }
@@ -144,25 +142,11 @@ export default function CasePlay() {
               <textarea
                 value={essay}
                 onChange={(e) => setEssay(e.target.value)}
-                rows={5}
-                placeholder="답장을 적어주세요"
+                rows={state.current.isFinal ? 8 : 5}
+                placeholder={state.current.isFinal ? "최종 추리를 적어주세요" : "답장을 적어주세요"}
                 style={textareaStyle}
               />
             </div>
-            {state.current.isFinal && (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-                  최종 추리 — 범인이 누구인지, 왜 그렇게 확신하는지 적어주세요 (200자 이상 권장)
-                </div>
-                <textarea
-                  value={finalEssay}
-                  onChange={(e) => setFinalEssay(e.target.value)}
-                  rows={7}
-                  placeholder="최종 추리를 적어주세요"
-                  style={textareaStyle}
-                />
-              </div>
-            )}
             <PrimaryButton onClick={handleSubmit} disabled={choice === null || submitting}>
               {submitting ? "제출 중…" : state.current.isFinal ? "최종 답장 제출" : "제출하기"}
             </PrimaryButton>
