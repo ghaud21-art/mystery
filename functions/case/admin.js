@@ -79,21 +79,21 @@ export const caseAdminSaveSeason = onCall(async (request) => {
   const db = getFirestore();
   const ref = db.doc(`caseSeasons/${seasonId}`);
   const exists = (await ref.get()).exists;
-  await ref.set(
-    {
-      title: patch.title,
-      landingCopy: patch.landingCopy || {},
-      totalDays: patch.totalDays || 7,
-      gradeTable: patch.gradeTable,
-      checkpoints: patch.checkpoints,
-      judgePrompt: patch.judgePrompt,
-      letterPrompt: patch.letterPrompt,
-      truthExplanation: patch.truthExplanation || "",
-      published: !!patch.published,
-      createdAt: exists ? undefined : new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  // Firestore Admin SDK는 필드값으로 undefined를 거부하므로(예외 발생), 이미 있는 시즌을
+  // 저장할 때는 createdAt 필드 자체를 아예 넣지 않는다(merge:true라 기존 값이 유지됨).
+  const payload = {
+    title: patch.title,
+    landingCopy: patch.landingCopy || {},
+    totalDays: patch.totalDays || 7,
+    gradeTable: patch.gradeTable,
+    checkpoints: patch.checkpoints,
+    judgePrompt: patch.judgePrompt,
+    letterPrompt: patch.letterPrompt,
+    truthExplanation: patch.truthExplanation || "",
+    published: !!patch.published,
+  };
+  if (!exists) payload.createdAt = new Date().toISOString();
+  await ref.set(payload, { merge: true });
 
   return { seasonId, activeCount: await activePlayerCount(db, seasonId) };
 });
