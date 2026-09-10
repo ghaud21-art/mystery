@@ -54,6 +54,13 @@ export const FriendAddIcon = (props) => (
   </svg>
 );
 
+export const CaseIcon = (props) => (
+  <svg {...base} {...props}>
+    <rect x="3" y="4" width="18" height="14" rx="2" />
+    <path d="M3 8h18M8 4v2M16 4v2M12 11v4M10 13h4" />
+  </svg>
+);
+
 export const ProfileIcon = (props) => (
   <svg {...base} {...props}>
     <circle cx="12" cy="8" r="4" />

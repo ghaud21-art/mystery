@@ -97,5 +97,22 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if signedIn() && (isAdmin() || resource.data.submittedBy == request.auth.uid);
     }
+
+    // 사건이 도착했습니다(caseSeasons/caseProgress/caseSubmissions/caseResults) — 정답/진상/
+    // 판정기준이 문서 안에 공개 필드와 섞여 있어 필드 단위로 숨길 방법이 없음(Firestore 규칙은
+    // 문서 단위 all-or-nothing). 그래서 이 기능은 전부 Cloud Functions(Admin SDK)를 통해서만
+    // 접근하고, 클라이언트 직접 읽기/쓰기는 전면 차단한다. "if false"는 버그가 아님.
+    match /caseSeasons/{seasonId}/{document=**} {
+      allow read, write: if false;
+    }
+    match /caseProgress/{docId} {
+      allow read, write: if false;
+    }
+    match /caseSubmissions/{docId} {
+      allow read, write: if false;
+    }
+    match /caseResults/{docId} {
+      allow read, write: if false;
+    }
   }
 }

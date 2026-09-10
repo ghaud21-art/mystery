@@ -105,3 +105,9 @@ export const sendHourBeforeReminders = onSchedule({ schedule: "every 15 minutes"
     await doc.ref.update({ reminded1h: true });
   }
 });
+
+// "사건이 도착했습니다" — 별도 파일로 분리(functions/case/). 콘텐츠·정답이 Firestore 규칙에서
+// 전면 차단돼 있어 여기 onCall 함수들만이 유일한 접근 경로다 (functions/case/auth.js,
+// functions/case/content.js 참고).
+export * from "./case/play.js";
+export * from "./case/admin.js";

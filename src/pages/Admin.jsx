@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { AI_FREE_LIMIT } from "../lib/ai.js";
 import { GENRES, scenarioGenre } from "../lib/scenarioUtils.js";
 import Avatar from "../components/Avatar.jsx";
-import { Card, EmptyState, PageHeader, ScrollBox } from "../components/ui.jsx";
+import { Card, EmptyState, OutlineButton, PageHeader, ScrollBox } from "../components/ui.jsx";
 
 const SCENARIO_EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline", genre: GENRES[0] };
 const CATEGORY_LABEL = { offline: "오프라인", online: "온라인" };
@@ -219,6 +220,14 @@ export default function Admin() {
           Firebase AI Logic(Gemini Developer API 백엔드)을 사용해서, API 키가 클라이언트에
           노출되지 않아요. Firebase 콘솔 → Build → AI Logic에서 활성화 여부를 확인할 수 있어요.
         </div>
+      </Card>
+
+      <Card style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>사건이 도착했습니다</div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>시즌·일차 콘텐츠 편집, 시딩, 현황 대시보드</div>
+        </div>
+        <Link to="/admin/case"><OutlineButton>사건 콘텐츠 관리</OutlineButton></Link>
       </Card>
 
       <Card style={{ display: "flex", flexDirection: "column", gap: 4 }}>

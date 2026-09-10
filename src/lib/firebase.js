@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging";
 
 // Firebase 콘솔 > 프로젝트 설정 > 일반 > "내 앱"에서 값을 복사해
@@ -29,6 +30,7 @@ if (recaptchaSiteKey) {
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app);
 export const googleProvider = new GoogleAuthProvider();
 
 // 알림(FCM)은 지원하지 않는 브라우저(구형 iOS Safari 등)에서 즉시 예외를 던지므로
