@@ -34,8 +34,14 @@ export default function CaseHub() {
         <Card><EmptyState>아직 공개된 시즌이 없어요.</EmptyState></Card>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {seasons.map((s) => (
-            <Link key={s.seasonId} to={`/case/${s.seasonId}`}>
+          {seasons.map((s) => {
+            const to = s.myState?.completed
+              ? `/case/${s.seasonId}/result`
+              : s.myState?.started
+              ? `/case/${s.seasonId}/play`
+              : `/case/${s.seasonId}`;
+            return (
+            <Link key={s.seasonId} to={to}>
               <Card style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
@@ -55,7 +61,8 @@ export default function CaseHub() {
                 </span>
               </Card>
             </Link>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

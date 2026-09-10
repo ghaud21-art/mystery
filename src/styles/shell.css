@@ -143,6 +143,8 @@
 .tabbar-inner {
   display: flex;
   justify-content: space-around;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab-item {
@@ -154,6 +156,9 @@
   color: var(--text-sub);
   font-size: 9.5px;
   border-radius: 10px;
+  flex: 1 0 auto;
+  min-width: 44px;
+  white-space: nowrap;
 }
 .tab-item.active {
   color: var(--accent);

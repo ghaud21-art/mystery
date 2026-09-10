@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { caseGetSeasonPublic, caseStart } from "../../lib/caseApi.js";
+import { caseGetSeasonPublic, caseGetPlayState, caseStart } from "../../lib/caseApi.js";
 import { Card, PrimaryButton } from "../../components/ui.jsx";
 
 // 로그인 없이도(공유 링크로 들어온 사람도) 랜딩 카피는 볼 수 있게 ProtectedRoute 밖에 배치됨.
@@ -12,6 +12,7 @@ export default function CaseLanding() {
   const [season, setSeason] = useState(null);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [checkingProgress, setCheckingProgress] = useState(!!user);
 
   useEffect(() => {
     (async () => {
@@ -22,6 +23,23 @@ export default function CaseLanding() {
       }
     })();
   }, [seasonId]);
+
+  // 이미 수사를 시작했다면(예: 북마크/공유 링크로 랜딩에 다시 들어온 경우) "시작하기" 버튼을
+  // 또 누르게 하지 않고 바로 진행 화면(또는 완료됐으면 결과 화면)으로 넘긴다.
+  useEffect(() => {
+    if (!user) { setCheckingProgress(false); return; }
+    (async () => {
+      try {
+        const res = await caseGetPlayState({ seasonId });
+        if (res.completed) navigate(`/case/${seasonId}/result`, { replace: true });
+        else if (res.started) navigate(`/case/${seasonId}/play`, { replace: true });
+        else setCheckingProgress(false);
+      } catch {
+        setCheckingProgress(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, seasonId]);
 
   async function handleStart() {
     setStarting(true);
@@ -41,7 +59,7 @@ export default function CaseLanding() {
       </div>
     );
   }
-  if (!season) {
+  if (!season || checkingProgress) {
     return <div style={{ textAlign: "center", marginTop: 80, color: "var(--text-sub)" }}>불러오는 중…</div>;
   }
 
