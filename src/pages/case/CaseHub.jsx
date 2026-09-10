@@ -38,7 +38,14 @@ export default function CaseHub() {
             <Link key={s.seasonId} to={`/case/${s.seasonId}`}>
               <Card style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{s.title}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                    {s.title}
+                    {!s.published && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-sub)", border: "1px solid var(--border)", borderRadius: 999, padding: "1px 7px" }}>
+                        미공개 (관리자만 보임)
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 4 }}>
                     {s.landingCopy?.catchphrase || `${s.totalDays}일간의 수사기록`}
                   </div>

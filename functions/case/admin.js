@@ -16,6 +16,29 @@ async function activePlayerCount(db, seasonId) {
   return snap.size;
 }
 
+// 관리자가 어드민 페이지에서 직접 플레이해보고("테스트 플레이") 원하는 만큼 다시 시작할 수
+// 있도록, 본인(호출한 관리자)의 진행/제출/결과만 지워준다. 다른 사람의 데이터는 건드리지 않음.
+export const caseAdminResetMyProgress = onCall(async (request) => {
+  const uid = await requireAdmin(request);
+  const { seasonId } = request.data || {};
+  checkSeasonId(seasonId);
+  const db = getFirestore();
+
+  const submissionsSnap = await db
+    .collection("caseSubmissions")
+    .where("uid", "==", uid)
+    .where("seasonId", "==", seasonId)
+    .get();
+
+  const batch = db.batch();
+  batch.delete(db.doc(`caseProgress/${uid}_${seasonId}`));
+  batch.delete(db.doc(`caseResults/${uid}_${seasonId}`));
+  submissionsSnap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+
+  return { reset: true, deletedSubmissions: submissionsSnap.size };
+});
+
 export const caseAdminListSeasons = onCall(async (request) => {
   await requireAdmin(request);
   const db = getFirestore();

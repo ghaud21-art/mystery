@@ -27,13 +27,23 @@ function checkSeasonId(seasonId) {
   }
 }
 
-async function loadPublishedSeason(db, seasonId) {
+async function isAdminUid(db, uid) {
+  if (!uid) return false;
+  const snap = await db.doc(`users/${uid}`).get();
+  return snap.exists && snap.data()?.isAdmin === true;
+}
+
+// 일반 플레이어는 공개(published)된 시즌만 볼 수 있지만, 관리자는 비공개(테스트 중) 시즌도
+// 미리 플레이해볼 수 있게 예외를 둔다 — 어드민 페이지에서 "테스트 플레이" 하려면 필요함.
+async function loadSeasonForPlay(db, seasonId, uid) {
   checkSeasonId(seasonId);
   const snap = await db.doc(`caseSeasons/${seasonId}`).get();
-  if (!snap.exists || snap.data()?.published !== true) {
+  if (!snap.exists) throw new HttpsError("not-found", "시즌을 찾을 수 없어요.");
+  const season = snap.data();
+  if (season.published !== true && !(await isAdminUid(db, uid))) {
     throw new HttpsError("not-found", "시즌을 찾을 수 없어요.");
   }
-  return snap.data();
+  return season;
 }
 
 // 서버시각(now) + 시작시각(startTime, 서버가 기록) 기준으로 "시간상 몇 일차까지 허용되는지"와
@@ -55,8 +65,9 @@ function unlockState({ startTime, mode, totalDays, submittedCount }) {
 export const caseListSeasons = onCall(async (request) => {
   const uid = requireAuth(request);
   const db = getFirestore();
+  const isAdmin = await isAdminUid(db, uid);
   const [seasonsSnap, progressSnap] = await Promise.all([
-    db.collection("caseSeasons").where("published", "==", true).get(),
+    isAdmin ? db.collection("caseSeasons").get() : db.collection("caseSeasons").where("published", "==", true).get(),
     db.collection("caseProgress").where("uid", "==", uid).get(),
   ]);
   const progressBySeason = Object.fromEntries(progressSnap.docs.map((d) => [d.data().seasonId, d.data()]));
@@ -72,11 +83,13 @@ export const caseListSeasons = onCall(async (request) => {
   };
 });
 
-// 비로그인 사용자도 호출 가능(공유 링크로 들어온 사람이 랜딩 카피만 보게).
+// 비로그인 사용자도 호출 가능(공유 링크로 들어온 사람이 랜딩 카피만 보게). 이 경로는 admin
+// 우회가 필요 없음 — 비공개 시즌 링크는 어차피 관리자 본인에게만 공유되므로 로그인 후
+// caseGetPlayState/caseStart에서 관리자 우회가 적용된다.
 export const caseGetSeasonPublic = onCall(async (request) => {
   const { seasonId } = request.data || {};
   const db = getFirestore();
-  const season = await loadPublishedSeason(db, seasonId);
+  const season = await loadSeasonForPlay(db, seasonId, request.auth?.uid);
   return { seasonId, ...publicSeasonView(season) };
 });
 
@@ -84,7 +97,7 @@ export const caseGetPlayState = onCall(async (request) => {
   const uid = requireAuth(request);
   const { seasonId } = request.data || {};
   const db = getFirestore();
-  const season = await loadPublishedSeason(db, seasonId);
+  const season = await loadSeasonForPlay(db, seasonId, uid);
   const totalDays = season.totalDays || 7;
 
   const progressSnap = await db.doc(`caseProgress/${progressId(uid, seasonId)}`).get();
@@ -137,7 +150,7 @@ export const caseStart = onCall(async (request) => {
   const uid = requireAuth(request);
   const { seasonId } = request.data || {};
   const db = getFirestore();
-  await loadPublishedSeason(db, seasonId);
+  await loadSeasonForPlay(db, seasonId, uid);
 
   const ref = db.doc(`caseProgress/${progressId(uid, seasonId)}`);
   const snap = await ref.get();
@@ -170,7 +183,7 @@ export const caseSubmitDay = onCall(async (request) => {
   const uid = requireAuth(request);
   const { seasonId, day, choice, essay } = request.data || {};
   const db = getFirestore();
-  const season = await loadPublishedSeason(db, seasonId);
+  const season = await loadSeasonForPlay(db, seasonId, uid);
   const totalDays = season.totalDays || 7;
 
   if (!Number.isInteger(day) || day < 1 || day >= totalDays) {
@@ -239,7 +252,7 @@ export const caseSubmitFinal = onCall(
     const uid = requireAuth(request);
     const { seasonId, choice, essay, finalEssay } = request.data || {};
     const db = getFirestore();
-    const season = await loadPublishedSeason(db, seasonId);
+    const season = await loadSeasonForPlay(db, seasonId, uid);
     const totalDays = season.totalDays || 7;
 
     if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
@@ -286,7 +299,7 @@ export const caseGetResult = onCall(async (request) => {
   const uid = requireAuth(request);
   const { seasonId } = request.data || {};
   const db = getFirestore();
-  const season = await loadPublishedSeason(db, seasonId);
+  const season = await loadSeasonForPlay(db, seasonId, uid);
 
   const [snap, progressSnap] = await Promise.all([
     db.doc(`caseResults/${progressId(uid, seasonId)}`).get(),
@@ -315,7 +328,7 @@ export const caseRetryJudge = onCall({ timeoutSeconds: 300, memory: "512MiB", se
   const uid = requireAuth(request);
   const { seasonId } = request.data || {};
   const db = getFirestore();
-  await loadPublishedSeason(db, seasonId);
+  await loadSeasonForPlay(db, seasonId, uid);
 
   const ref = db.doc(`caseResults/${progressId(uid, seasonId)}`);
   const snap = await ref.get();

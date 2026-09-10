@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { caseAdminGetSeason, caseAdminSaveSeason, caseAdminSaveDay } from "../../lib/caseApi.js";
+import { caseAdminGetSeason, caseAdminSaveSeason, caseAdminSaveDay, caseAdminResetMyProgress } from "../../lib/caseApi.js";
 import { Card, OutlineButton, PageHeader, PrimaryButton } from "../../components/ui.jsx";
 import ReportPaper from "../../components/case/ReportPaper.jsx";
 import ChoiceList from "../../components/case/ChoiceList.jsx";
@@ -27,6 +27,8 @@ export default function AdminCaseSeasonEdit() {
   const [savingDay, setSavingDay] = useState(false);
   const [activeWarning, setActiveWarning] = useState(0);
   const [preview, setPreview] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetStatus, setResetStatus] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -94,6 +96,20 @@ export default function AdminCaseSeasonEdit() {
     setSeasonForm((f) => ({ ...f, checkpoints: f.checkpoints.filter((_, idx) => idx !== i) }));
   }
 
+  async function resetTestProgress() {
+    if (!window.confirm("내(관리자) 테스트 플레이 기록을 전부 지우고 처음부터 다시 시작할까요?\n다른 사람의 기록에는 영향 없어요.")) return;
+    setResetting(true);
+    setError("");
+    try {
+      await caseAdminResetMyProgress({ seasonId });
+      setResetStatus("초기화했어요. '플레이해보기'를 눌러 처음부터 다시 시작할 수 있어요.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResetting(false);
+    }
+  }
+
   if (!loaded) return <div style={{ textAlign: "center", marginTop: 60, color: "var(--text-sub)" }}>불러오는 중…</div>;
 
   return (
@@ -107,6 +123,20 @@ export default function AdminCaseSeasonEdit() {
           {activeWarning}명이 수사 중입니다. 수정은 즉시 반영되며, 이미 제출된 답안은 재채점되지 않습니다.
         </div>
       )}
+
+      <Card style={{ marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>테스트 플레이</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+            비공개 상태여도 관리자는 실제로 플레이해볼 수 있어요. 밤샘 수사로 전환하면 하루씩 안 기다리고 바로 진행돼요.
+            {resetStatus && <span style={{ display: "block", marginTop: 4, color: "var(--success)" }}>{resetStatus}</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <OutlineButton onClick={resetTestProgress} disabled={resetting}>{resetting ? "초기화 중…" : "테스트 진행 초기화"}</OutlineButton>
+          <Link to={`/case/${seasonId}`}><PrimaryButton>플레이해보기 →</PrimaryButton></Link>
+        </div>
+      </Card>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: "1px solid var(--border)" }}>
         {[{ id: "settings", label: "시즌 설정" }, { id: "days", label: "일차 콘텐츠" }].map((t) => (

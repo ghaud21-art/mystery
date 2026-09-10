@@ -34,3 +34,4 @@ export const caseAdminSaveDay = call("caseAdminSaveDay");
 export const caseAdminCreateSeason = call("caseAdminCreateSeason");
 export const caseAdminImportSeason = call("caseAdminImportSeason");
 export const caseAdminGetStats = call("caseAdminGetStats");
+export const caseAdminResetMyProgress = call("caseAdminResetMyProgress");
