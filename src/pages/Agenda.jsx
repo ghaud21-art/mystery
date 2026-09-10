@@ -28,6 +28,7 @@ export default function Agenda() {
   const [personalForm, setPersonalForm] = useState(EMPTY_PERSONAL_FORM);
   const [editingPersonalId, setEditingPersonalId] = useState(null);
   const [personalBusy, setPersonalBusy] = useState(false);
+  const [personalTitleQueue, setPersonalTitleQueue] = useState([]);
   const [personalCategoryFilter, setPersonalCategoryFilter] = useState("all");
   const [upcomingCategoryFilter, setUpcomingCategoryFilter] = useState("all");
   const [scenarios, setScenarios] = useState([]);
@@ -124,6 +125,7 @@ export default function Agenda() {
   function startCreatePersonal() {
     setEditingPersonalId(null);
     setPersonalForm(EMPTY_PERSONAL_FORM);
+    setPersonalTitleQueue([]);
     setShowPersonalForm(true);
   }
 
@@ -134,18 +136,37 @@ export default function Agenda() {
       location: s.location || "", datetime: s.datetime || "", endDatetime: s.endDatetime || "",
       color: s.color || PRESET_COLORS[1],
     });
+    setPersonalTitleQueue([]);
     setShowPersonalForm(true);
+  }
+
+  // 같은 날 여러 작품을 한 날짜/장소로 한 번에 등록할 수 있도록, 입력 중인 제목을
+  // 목록에 쌓아뒀다가 등록 시 한꺼번에 각각 별도 일정으로 만든다.
+  function queueTitle() {
+    const t = personalForm.title.trim();
+    if (!t) return;
+    if (!personalTitleQueue.includes(t)) setPersonalTitleQueue((q) => [...q, t]);
+    setPersonalForm((f) => ({ ...f, title: "" }));
+  }
+  function removeQueuedTitle(t) {
+    setPersonalTitleQueue((q) => q.filter((x) => x !== t));
   }
 
   async function submitPersonalForm(e) {
     e.preventDefault();
-    setPersonalBusy(true);
+
     if (editingPersonalId) {
+      setPersonalBusy(true);
       await updateDoc(doc(db, "personalSchedules", editingPersonalId), personalForm);
     } else {
-      await addDoc(collection(db, "personalSchedules"), {
-        ...personalForm, userId: profile.id, createdAt: serverTimestamp(),
-      });
+      const titles = [...personalTitleQueue, ...(personalForm.title.trim() ? [personalForm.title.trim()] : [])];
+      if (titles.length === 0) return;
+      setPersonalBusy(true);
+      for (const title of titles) {
+        await addDoc(collection(db, "personalSchedules"), {
+          ...personalForm, title, userId: profile.id, createdAt: serverTimestamp(),
+        });
+      }
     }
 
     // 가능일 연동: 새로 등록한 일정 날짜는 더 이상 "가능한 날"이 아니므로 자동으로 뺌
@@ -158,6 +179,7 @@ export default function Agenda() {
     }
 
     setPersonalForm(EMPTY_PERSONAL_FORM);
+    setPersonalTitleQueue([]);
     setEditingPersonalId(null);
     setShowPersonalForm(false);
     setPersonalBusy(false);
@@ -384,15 +406,22 @@ export default function Agenda() {
               ))}
             </div>
             <div style={{ position: "relative" }}>
-              <input
-                required
-                placeholder="이름 (시나리오/테마/게임 등)"
-                value={personalForm.title}
-                onChange={(e) => { setPersonalForm({ ...personalForm, title: e.target.value }); setShowTitleSuggestions(true); }}
-                onFocus={() => setShowTitleSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
-                style={inputStyle}
-              />
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  required={personalTitleQueue.length === 0}
+                  placeholder="이름 (시나리오/테마/게임 등)"
+                  value={personalForm.title}
+                  onChange={(e) => { setPersonalForm({ ...personalForm, title: e.target.value }); setShowTitleSuggestions(true); }}
+                  onFocus={() => setShowTitleSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                {!editingPersonalId && (
+                  <OutlineButton type="button" style={{ flex: "none", padding: "0 12px", fontSize: 12 }} onClick={queueTitle}>
+                    + 목록에 추가
+                  </OutlineButton>
+                )}
+              </div>
               {showTitleSuggestions && titleSuggestions.length > 0 && (
                 <div style={{
                   position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
@@ -416,6 +445,31 @@ export default function Agenda() {
                 </div>
               )}
             </div>
+
+            {personalTitleQueue.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {personalTitleQueue.map((t) => (
+                  <span key={t} style={{
+                    display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "4px 6px 4px 10px",
+                    borderRadius: 999, background: "var(--accent-dim)", color: "var(--accent)",
+                  }}>
+                    {t}
+                    <button
+                      type="button"
+                      onClick={() => removeQueuedTitle(t)}
+                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {!editingPersonalId && (
+              <div style={{ fontSize: 10.5, color: "var(--text-sub)" }}>
+                같은 날 여러 작품을 했다면, 제목을 입력하고 "+ 목록에 추가"를 눌러서 한 번에 등록할 수 있어요. (날짜·장소·카테고리는 전부 동일하게 적용돼요)
+              </div>
+            )}
             <input required placeholder="장소" value={personalForm.location}
               onChange={(e) => setPersonalForm({ ...personalForm, location: e.target.value })} style={inputStyle} />
             <label style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
@@ -445,7 +499,14 @@ export default function Agenda() {
               </div>
             </div>
             <PrimaryButton type="submit" disabled={personalBusy}>
-              {personalBusy ? "저장 중…" : editingPersonalId ? "수정 저장" : "등록하기"}
+              {personalBusy
+                ? "저장 중…"
+                : editingPersonalId
+                ? "수정 저장"
+                : (() => {
+                    const count = personalTitleQueue.length + (personalForm.title.trim() ? 1 : 0);
+                    return count > 1 ? `${count}개 작품 한 번에 등록하기` : "등록하기";
+                  })()}
             </PrimaryButton>
           </form>
         )}
