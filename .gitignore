@@ -16,5 +16,9 @@ dist/
 # 시나리오 원본 엑셀 (Firestore로 가져온 뒤에는 git에 안 올림)
 *.xlsx
 
+# "사건이 도착했습니다" 콘텐츠 원본(정답·진상 포함) — 공개 저장소라 절대 커밋하지 않음.
+# 시딩은 어드민 페이지 "JSON 가져오기"로만 함.
+/사건파일/
+
 # Claude Code 내부 상태 파일
 .claude/scheduled_tasks.lock
