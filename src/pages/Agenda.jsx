@@ -371,6 +371,19 @@ export default function Agenda() {
         )}
       </Card>
 
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        {calendarSyncStatus && (
+          <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{calendarSyncStatus}</div>
+        )}
+        <OutlineButton
+          style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
+          onClick={syncAllToGoogleCalendar}
+          disabled={calendarSyncBusy}
+        >
+          {calendarSyncBusy ? "동기화 중…" : "📅 구글 캘린더로 동기화"}
+        </OutlineButton>
+      </div>
+
       <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start", marginBottom: 20 }}>
         <Card>
           <MonthCalendar
@@ -467,28 +480,16 @@ export default function Agenda() {
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>내 개인 일정</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <OutlineButton
-              style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
-              onClick={syncAllToGoogleCalendar}
-              disabled={calendarSyncBusy}
-            >
-              {calendarSyncBusy ? "동기화 중…" : "📅 구글 캘린더로 동기화"}
-            </OutlineButton>
-            <PrimaryButton
-              style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
-              onClick={() => (showPersonalForm ? setShowPersonalForm(false) : startCreatePersonal())}
-            >
-              {showPersonalForm ? "닫기" : "+ 개인 일정 추가"}
-            </PrimaryButton>
-          </div>
+          <PrimaryButton
+            style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
+            onClick={() => (showPersonalForm ? setShowPersonalForm(false) : startCreatePersonal())}
+          >
+            {showPersonalForm ? "닫기" : "+ 개인 일정 추가"}
+          </PrimaryButton>
         </div>
         <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
           모임 없이 혼자(또는 그냥 기록용으로) 등록하는 일정이에요. 등록하면 그 날짜는 자동으로 가능일에서 빠져요.
         </div>
-        {calendarSyncStatus && (
-          <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{calendarSyncStatus}</div>
-        )}
 
         {showPersonalForm && (
           <form onSubmit={submitPersonalForm} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 10, background: "var(--bg-sub)" }}>
