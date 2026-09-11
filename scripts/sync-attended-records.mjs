@@ -11,15 +11,25 @@ const db = getFirestore();
 
 const now = new Date().toISOString();
 
+// uid별 기존 기록 제목 목록을 한 번만 불러와서 재사용 (완전일치 대신 normalizeTitle로 비교해야
+// 내가 손으로 적어둔 기록의 표기가 일정 제목과 띄어쓰기 등만 살짝 달라도 같은 작품으로 인식해서
+// 중복 생성을 막을 수 있음. 날짜는 보지 않음 — "이미 기록에 있는 작품"이면 그걸로 충분히 연결된
+// 것으로 보고 자동으로는 하나만 남긴다).
+const existingTitlesByUid = new Map();
+
+async function loadExistingTitles(uid) {
+  if (existingTitlesByUid.has(uid)) return existingTitlesByUid.get(uid);
+  const snap = await db.collection("records").where("userId", "==", uid).get();
+  const titles = new Set(snap.docs.map((d) => normalizeTitle(d.data().scenarioName)));
+  existingTitlesByUid.set(uid, titles);
+  return titles;
+}
+
 async function createRecordIfMissing(uid, title, date) {
-  const existing = await db
-    .collection("records")
-    .where("userId", "==", uid)
-    .where("scenarioName", "==", title)
-    .where("date", "==", date)
-    .limit(1)
-    .get();
-  if (!existing.empty) return false;
+  const key = normalizeTitle(title);
+  const existingTitles = await loadExistingTitles(uid);
+  if (existingTitles.has(key)) return false;
+  existingTitles.add(key); // 같은 실행 안에서 같은 uid에 여러 일정이 같은 작품이면 그중 하나만 생성
 
   await db.collection("records").add({
     userId: uid,

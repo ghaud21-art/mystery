@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   addDoc, arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query,
@@ -11,6 +11,7 @@ import { displayAvatar, displayName } from "../lib/profileDisplay.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
 import { fetchScheduledTitles } from "../lib/scheduledTitles.js";
+import { deleteCalendarEvent, getValidCalendarToken, upsertCalendarEvent } from "../lib/googleCalendar.js";
 import { PRESET_COLORS } from "../lib/colors.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
@@ -431,6 +432,42 @@ function SchedulesTab({ group, profile, members }) {
 
   useEffect(() => { load(); }, [group.id]);
 
+  // 구글 캘린더 연동 중이고 이번 세션에 아직 유효한 토큰이 있으면, 이 모임 페이지를 열 때
+  // 한 번 "내가 참석 확정한" 일정들을 조용히 재동기화함 — 다른 멤버가 일정을 수정한 경우처럼
+  // 이 브라우저에서 직접 만들거나 수정하지 않은 변경사항도 여기서 따라잡음.
+  const catchupSyncedRef = useRef(false);
+  useEffect(() => {
+    if (catchupSyncedRef.current) return;
+    if (!profile?.googleCalendarSync || !items) return;
+    if (!getValidCalendarToken()) return;
+    catchupSyncedRef.current = true;
+    (async () => {
+      const mine = items.filter(
+        (s) => s.attendees?.[profile.id] === "yes" && (s.status || "confirmed") === "confirmed" && s.datetime
+      );
+      for (const s of mine) {
+        try {
+          await upsertCalendarEvent(profile.id, `group_${s.id}`, {
+            title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+          });
+        } catch (err) {
+          if (err.code === "calendar-auth-expired") break;
+          console.error(err);
+        }
+      }
+    })();
+  }, [items, profile?.id, profile?.googleCalendarSync]);
+
+  async function syncMyGroupCalendar(scheduleId, s) {
+    try {
+      await upsertCalendarEvent(profile.id, `group_${scheduleId}`, {
+        title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
@@ -514,8 +551,12 @@ function SchedulesTab({ group, profile, members }) {
     };
     if (editingId) {
       await updateDoc(doc(db, "schedules", editingId), payload);
+      const current = items?.find((s) => s.id === editingId);
+      if (payload.status === "confirmed" && payload.datetime && current?.attendees?.[profile.id] === "yes") {
+        await syncMyGroupCalendar(editingId, payload);
+      }
     } else {
-      await addDoc(collection(db, "schedules"), {
+      const ref = await addDoc(collection(db, "schedules"), {
         ...payload,
         groupId: group.id,
         hostId: profile.id,
@@ -523,6 +564,9 @@ function SchedulesTab({ group, profile, members }) {
         attendees: { [profile.id]: "yes" },
         createdAt: serverTimestamp(),
       });
+      if (payload.status === "confirmed" && payload.datetime) {
+        await syncMyGroupCalendar(ref.id, payload);
+      }
     }
     setForm(EMPTY_FORM);
     setEditingId(null);
@@ -533,12 +577,19 @@ function SchedulesTab({ group, profile, members }) {
   async function removeSchedule(id) {
     if (!window.confirm("이 일정을 삭제할까요?")) return;
     await deleteDoc(doc(db, "schedules", id));
+    await deleteCalendarEvent(profile.id, `group_${id}`).catch((err) => console.error(err));
     load();
   }
 
   async function vote(schedule, currentStatus) {
     const next = currentStatus === "yes" ? "no" : "yes";
     await updateDoc(doc(db, "schedules", schedule.id), { [`attendees.${profile.id}`]: next });
+
+    if (next === "yes" && schedule.datetime && (schedule.status || "confirmed") === "confirmed") {
+      await syncMyGroupCalendar(schedule.id, schedule);
+    } else if (next === "no") {
+      await deleteCalendarEvent(profile.id, `group_${schedule.id}`).catch((err) => console.error(err));
+    }
 
     // 참석하기로 하면, 겹치는 날짜를 "가능일"에서 자동으로 빼서 다른 모임 후보에 안 잡히게 함
     if (next === "yes" && schedule.datetime) {

@@ -11,6 +11,7 @@ import { canUseAI, KAKAO_CONTACT_URL, parseBulkRecords } from "../lib/ai.js";
 import { normalizeTitle } from "../lib/scenarioUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
 import { computeCoAttendanceCounts } from "../lib/partners.js";
+import { connectGoogleCalendar, disconnectGoogleCalendar } from "../lib/googleCalendar.js";
 import Avatar from "../components/Avatar.jsx";
 import DetectiveProfileCard from "../components/DetectiveProfileCard.jsx";
 import { AILimitNotice, Card, OutlineButton, PageHeader, PrimaryButton } from "../components/ui.jsx";
@@ -253,9 +254,79 @@ export default function Profile() {
         )}
       </Card>
 
+      {!editing && <GoogleCalendarCard profile={profile} setProfile={setProfile} />}
       {!editing && <BulkRecordImport profile={profile} />}
       {!editing && <RecommendationCard profile={profile} main={main} />}
     </div>
+  );
+}
+
+function GoogleCalendarCard({ profile, setProfile }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  const connected = !!profile?.googleCalendarSync;
+
+  async function connect() {
+    setBusy(true);
+    setStatus("");
+    try {
+      await connectGoogleCalendar(profile.id);
+      setProfile((p) => ({ ...p, googleCalendarSync: true }));
+      setStatus("연동됐어요! 이제 참석 확정한 모임 일정·개인 일정이 자동으로 구글 캘린더에 추가돼요.");
+    } catch (err) {
+      setStatus(err.message || "연동에 실패했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    if (!window.confirm("구글 캘린더 자동 동기화를 끌까요? (이미 만들어진 구글 캘린더 일정은 그대로 남아요)")) return;
+    setBusy(true);
+    try {
+      await disconnectGoogleCalendar(profile.id);
+      setProfile((p) => ({ ...p, googleCalendarSync: false }));
+      setStatus("연동을 껐어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>📅 구글 캘린더 연동</div>
+          <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 2 }}>
+            참석 확정한 모임 일정과 개인 일정을 내 구글 캘린더에 자동으로 추가/수정/삭제해줘요.
+            구글 캘린더에 있던 기존 일정은 이 앱이 읽어오지 않으니 섞이지 않아요 (앱 → 구글 캘린더 한 방향).
+          </div>
+        </div>
+        {connected && (
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--success)", whiteSpace: "nowrap" }}>연동됨 ✓</span>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <OutlineButton style={{ flex: "1 1 160px" }} onClick={connect} disabled={busy}>
+          {busy ? "처리 중…" : connected ? "다시 연결 (토큰 새로고침)" : "구글 캘린더 연동하기"}
+        </OutlineButton>
+        {connected && (
+          <OutlineButton
+            style={{ flex: "1 1 160px", borderColor: "var(--danger)", color: "var(--danger)" }}
+            onClick={disconnect}
+            disabled={busy}
+          >
+            연동 해제
+          </OutlineButton>
+        )}
+      </div>
+      {connected && (
+        <div style={{ fontSize: 10.5, color: "var(--text-sub)" }}>
+          구글 인증은 보안상 한 시간 정도만 유지돼요. 한동안 안 쓰다 켜서 동기화가 안 되면 "다시 연결"을 한 번 눌러주세요.
+        </div>
+      )}
+      {status && <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{status}</div>}
+    </Card>
   );
 }
 

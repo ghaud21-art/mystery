@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where,
@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { enableReminderNotifications } from "../lib/notifications.js";
 import { expandDateRange } from "../lib/dateUtils.js";
+import { deleteCalendarEvent, getValidCalendarToken, upsertCalendarEvent } from "../lib/googleCalendar.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import { PRESET_COLORS } from "../lib/colors.js";
@@ -122,6 +123,42 @@ export default function Agenda() {
 
   useEffect(() => { if (profile?.id) loadPersonalSchedules(); }, [profile?.id]);
 
+  // 구글 캘린더 연동 중이고 이번 세션에 아직 유효한 토큰이 있으면, 페이지를 열 때 한 번
+  // "참석 예정" 일정들을 조용히 재동기화해줌 — 다른 멤버가 모임 일정을 수정한 경우처럼
+  // 이 브라우저에서 직접 만들거나 수정하지 않은 변경사항도 여기서 따라잡음.
+  const catchupSyncedRef = useRef(false);
+  useEffect(() => {
+    if (catchupSyncedRef.current) return;
+    if (!profile?.id || !profile?.googleCalendarSync) return;
+    if (!items || !personalSchedules) return;
+    if (!getValidCalendarToken()) return;
+    catchupSyncedRef.current = true;
+    (async () => {
+      const attendingGroup = items.filter((s) => s.attendees?.[profile.id] === "yes" && s.datetime);
+      for (const s of attendingGroup) {
+        try {
+          await upsertCalendarEvent(profile.id, `group_${s.id}`, {
+            title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+          });
+        } catch (err) {
+          if (err.code === "calendar-auth-expired") break;
+          console.error(err);
+        }
+      }
+      for (const s of personalSchedules) {
+        if (!s.datetime) continue;
+        try {
+          await upsertCalendarEvent(profile.id, `personal_${s.id}`, {
+            title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+          });
+        } catch (err) {
+          if (err.code === "calendar-auth-expired") break;
+          console.error(err);
+        }
+      }
+    })();
+  }, [items, personalSchedules, profile?.id, profile?.googleCalendarSync]);
+
   function startCreatePersonal() {
     setEditingPersonalId(null);
     setPersonalForm(EMPTY_PERSONAL_FORM);
@@ -158,14 +195,16 @@ export default function Agenda() {
     if (editingPersonalId) {
       setPersonalBusy(true);
       await updateDoc(doc(db, "personalSchedules", editingPersonalId), personalForm);
+      await syncPersonalToCalendar(editingPersonalId, personalForm);
     } else {
       const titles = [...personalTitleQueue, ...(personalForm.title.trim() ? [personalForm.title.trim()] : [])];
       if (titles.length === 0) return;
       setPersonalBusy(true);
       for (const title of titles) {
-        await addDoc(collection(db, "personalSchedules"), {
+        const ref = await addDoc(collection(db, "personalSchedules"), {
           ...personalForm, title, userId: profile.id, createdAt: serverTimestamp(),
         });
+        await syncPersonalToCalendar(ref.id, { ...personalForm, title });
       }
     }
 
@@ -189,7 +228,21 @@ export default function Agenda() {
   async function removePersonal(id) {
     if (!window.confirm("이 개인 일정을 삭제할까요?")) return;
     await deleteDoc(doc(db, "personalSchedules", id));
+    await deleteCalendarEvent(profile.id, `personal_${id}`);
     loadPersonalSchedules();
+  }
+
+  // 구글 캘린더 연동이 꺼져 있거나 토큰이 만료됐으면 upsertCalendarEvent가 조용히 건너뛰므로,
+  // 여기선 연동 여부를 따로 체크하지 않고 항상 호출해도 안전함. 실패해도 개인 일정 저장 자체는
+  // 이미 끝난 뒤라 조용히 무시(다음 수정 때 다시 시도됨).
+  async function syncPersonalToCalendar(id, s) {
+    try {
+      await upsertCalendarEvent(profile.id, `personal_${id}`, {
+        title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+      });
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   const markedDates = useMemo(() => {

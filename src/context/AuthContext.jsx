@@ -23,6 +23,7 @@ const DEFAULT_PROFILE_FIELDS = {
   wishlist: [],
   favoriteTitles: [],
   playedCount: 0,
+  googleCalendarSync: false,
 };
 
 async function ensureUserProfile(user) {
