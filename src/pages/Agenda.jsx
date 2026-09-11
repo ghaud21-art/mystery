@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { enableReminderNotifications } from "../lib/notifications.js";
 import { expandDateRange } from "../lib/dateUtils.js";
-import { deleteCalendarEvent, getValidCalendarToken, upsertCalendarEvent } from "../lib/googleCalendar.js";
+import { connectGoogleCalendar, deleteCalendarEvent, getValidCalendarToken, upsertCalendarEvent } from "../lib/googleCalendar.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import { PRESET_COLORS } from "../lib/colors.js";
@@ -30,6 +30,8 @@ export default function Agenda() {
   const [editingPersonalId, setEditingPersonalId] = useState(null);
   const [personalBusy, setPersonalBusy] = useState(false);
   const [personalTitleQueue, setPersonalTitleQueue] = useState([]);
+  const [calendarSyncBusy, setCalendarSyncBusy] = useState(false);
+  const [calendarSyncStatus, setCalendarSyncStatus] = useState("");
   const [personalCategoryFilter, setPersonalCategoryFilter] = useState("all");
   const [upcomingCategoryFilter, setUpcomingCategoryFilter] = useState("all");
   const [scenarios, setScenarios] = useState([]);
@@ -245,6 +247,43 @@ export default function Agenda() {
     }
   }
 
+  // "구글 캘린더로 동기화" 버튼 — 연동이 안 돼 있으면 먼저 연동(팝업)까지 하고, 바로 이어서
+  // 지금 보이는 참석 확정 모임 일정 + 개인 일정을 전부 한 번에 구글 캘린더로 밀어넣음.
+  // 연동만 해두고 페이지를 안 옮기면 자동 동기화가 아직 한 번도 안 돌았을 수 있어서(예: 프로필에서
+  // 연동만 하고 끝낸 경우), 그럴 때 바로 눌러서 확인할 수 있는 수동 버튼.
+  async function syncAllToGoogleCalendar() {
+    setCalendarSyncBusy(true);
+    setCalendarSyncStatus("동기화 중…");
+    try {
+      if (!getValidCalendarToken()) {
+        await connectGoogleCalendar(profile.id);
+        setProfile((p) => ({ ...p, googleCalendarSync: true }));
+      }
+      let synced = 0;
+      const attendingGroup = (items || []).filter(
+        (s) => s.attendees?.[profile.id] === "yes" && s.datetime && (s.status || "confirmed") === "confirmed"
+      );
+      for (const s of attendingGroup) {
+        const res = await upsertCalendarEvent(profile.id, `group_${s.id}`, {
+          title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+        });
+        if (!res.skipped) synced++;
+      }
+      for (const s of personalSchedules || []) {
+        if (!s.datetime) continue;
+        const res = await upsertCalendarEvent(profile.id, `personal_${s.id}`, {
+          title: s.title, location: s.location, startLocal: s.datetime, endLocal: s.endDatetime,
+        });
+        if (!res.skipped) synced++;
+      }
+      setCalendarSyncStatus(synced > 0 ? `${synced}개 일정을 구글 캘린더로 보냈어요 ✓` : "구글 캘린더로 보낼 일정이 없어요.");
+    } catch (err) {
+      setCalendarSyncStatus(err.message || "동기화에 실패했어요.");
+    } finally {
+      setCalendarSyncBusy(false);
+    }
+  }
+
   const markedDates = useMemo(() => {
     const set = new Set();
     (items || []).forEach((s) => {
@@ -428,16 +467,28 @@ export default function Agenda() {
       <Card style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>내 개인 일정</div>
-          <PrimaryButton
-            style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
-            onClick={() => (showPersonalForm ? setShowPersonalForm(false) : startCreatePersonal())}
-          >
-            {showPersonalForm ? "닫기" : "+ 개인 일정 추가"}
-          </PrimaryButton>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <OutlineButton
+              style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
+              onClick={syncAllToGoogleCalendar}
+              disabled={calendarSyncBusy}
+            >
+              {calendarSyncBusy ? "동기화 중…" : "📅 구글 캘린더로 동기화"}
+            </OutlineButton>
+            <PrimaryButton
+              style={{ height: 34, padding: "0 14px", fontSize: 12.5 }}
+              onClick={() => (showPersonalForm ? setShowPersonalForm(false) : startCreatePersonal())}
+            >
+              {showPersonalForm ? "닫기" : "+ 개인 일정 추가"}
+            </PrimaryButton>
+          </div>
         </div>
         <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
           모임 없이 혼자(또는 그냥 기록용으로) 등록하는 일정이에요. 등록하면 그 날짜는 자동으로 가능일에서 빠져요.
         </div>
+        {calendarSyncStatus && (
+          <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>{calendarSyncStatus}</div>
+        )}
 
         {showPersonalForm && (
           <form onSubmit={submitPersonalForm} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 10, background: "var(--bg-sub)" }}>
