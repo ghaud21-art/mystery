@@ -10,6 +10,7 @@ import { expandDateRange } from "../lib/dateUtils.js";
 import { connectGoogleCalendar, deleteCalendarEvent, getValidCalendarToken, upsertCalendarEvent } from "../lib/googleCalendar.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
+import ColorPicker from "../components/ColorPicker.jsx";
 import { PRESET_COLORS } from "../lib/colors.js";
 
 const PERSONAL_CATEGORIES = ["머더미스터리", "크라임씬", "방탈출", "보드게임", "기타"];
@@ -589,19 +590,13 @@ export default function Agenda() {
             </label>
             <div>
               <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginBottom: 6 }}>캘린더 색깔</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setPersonalForm({ ...personalForm, color: c })}
-                    style={{
-                      width: 26, height: 26, borderRadius: "50%", background: c, padding: 0,
-                      border: personalForm.color === c ? "3px solid var(--text)" : "2px solid transparent",
-                    }}
-                  />
-                ))}
-              </div>
+              <ColorPicker
+                value={personalForm.color}
+                onSelect={(c) => setPersonalForm({ ...personalForm, color: c })}
+                profile={profile}
+                setProfile={setProfile}
+                size={26}
+              />
             </div>
             <PrimaryButton type="submit" disabled={personalBusy}>
               {personalBusy

@@ -24,6 +24,7 @@ const DEFAULT_PROFILE_FIELDS = {
   favoriteTitles: [],
   playedCount: 0,
   googleCalendarSync: false,
+  customColors: [],
 };
 
 async function ensureUserProfile(user) {
