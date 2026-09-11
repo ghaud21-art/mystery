@@ -49,6 +49,10 @@ export function getValidCalendarToken() {
 export async function connectGoogleCalendar(uid) {
   const provider = new GoogleAuthProvider();
   provider.addScope(CALENDAR_SCOPE);
+  // prompt:consent를 강제로 줘서 매번 진짜 동의 화면이 뜨게 함 — 안 그러면 구글이 이미 로그인된
+  // 세션이라고 판단해서 팝업이 조용히 넘어가버리고, 그 경우 캘린더 쓰기 스코프가 실제로는
+  // 승인 안 된 채로 액세스 토큰이 돌아와서 API 호출이 403(insufficient scope)으로 실패함.
+  provider.setCustomParameters({ prompt: "consent" });
   const result = await signInWithPopup(auth, provider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (!credential?.accessToken) {
@@ -86,8 +90,18 @@ async function apiFetch(path, { method = "GET", token, body } = {}) {
     throw err;
   }
   if (!res.ok && res.status !== 404 && res.status !== 410) {
-    const err = new Error(`구글 캘린더 동기화에 실패했어요 (${res.status})`);
+    // 구글이 보내주는 실제 사유(스코프 부족/API 비활성 등)를 그대로 화면에 보여줘야 원인을
+    // 바로 알 수 있어서, 상태 코드만 찍지 않고 응답 본문의 메시지까지 붙임.
+    let detail = "";
+    try {
+      const errBody = await res.json();
+      detail = errBody?.error?.message || "";
+    } catch {
+      // 본문이 JSON이 아니면 무시하고 상태 코드만 표시
+    }
+    const err = new Error(`구글 캘린더 동기화에 실패했어요 (${res.status}${detail ? `: ${detail}` : ""})`);
     err.code = "calendar-api-error";
+    err.status = res.status;
     throw err;
   }
   if (res.status === 204 || res.status === 404 || res.status === 410) return null;
