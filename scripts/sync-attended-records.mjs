@@ -11,27 +11,44 @@ const db = getFirestore();
 
 const now = new Date().toISOString();
 
-// uid별 기존 기록 제목 목록을 한 번만 불러와서 재사용 (완전일치 대신 normalizeTitle로 비교해야
-// 내가 손으로 적어둔 기록의 표기가 일정 제목과 띄어쓰기 등만 살짝 달라도 같은 작품으로 인식해서
-// 중복 생성을 막을 수 있음. 날짜는 보지 않음 — "이미 기록에 있는 작품"이면 그걸로 충분히 연결된
-// 것으로 보고 자동으로는 하나만 남긴다).
-const existingTitlesByUid = new Map();
+// uid별 기존 기록을 한 번만 불러와서 재사용 (완전일치 대신 normalizeTitle로 비교해야 내가 손으로
+// 적어둔 기록의 표기가 일정 제목과 띄어쓰기 등만 살짝 달라도 같은 작품으로 인식해서 중복 생성을
+// 막을 수 있음). 이미 같은 작품 기록이 있으면 새로 만들진 않되, 그 기록이 아직 "손으로 적은"
+// 기록(source가 auto-schedule이 아님)이고 날짜가 실제 일정 날짜와 다르면 일정 쪽 날짜로 보정한다
+// — 모임/개인 일정에서 자동 연동된 날짜가 손으로 대충 적은 날짜보다 정확하다고 보기 때문. 이미
+// auto-schedule로 한 번 보정된 기록은 다시 안 건드림(같은 작품을 다른 날 또 플레이한 경우까지
+// 뒤에 처리되는 다른 일정 날짜로 덮어써버리는 걸 막기 위함). 별점/역할/메모처럼 손으로 적어둔
+// 내용은 기록을 지우고 새로 만드는 게 아니라 날짜만 보정하는 것이므로 그대로 남는다.
+const existingByUid = new Map();
 
-async function loadExistingTitles(uid) {
-  if (existingTitlesByUid.has(uid)) return existingTitlesByUid.get(uid);
+async function loadExisting(uid) {
+  if (existingByUid.has(uid)) return existingByUid.get(uid);
   const snap = await db.collection("records").where("userId", "==", uid).get();
-  const titles = new Set(snap.docs.map((d) => normalizeTitle(d.data().scenarioName)));
-  existingTitlesByUid.set(uid, titles);
-  return titles;
+  const map = new Map();
+  snap.docs.forEach((d) => {
+    const data = d.data();
+    map.set(normalizeTitle(data.scenarioName), { date: data.date, source: data.source || null, ref: d.ref });
+  });
+  existingByUid.set(uid, map);
+  return map;
 }
 
 async function createRecordIfMissing(uid, title, date) {
   const key = normalizeTitle(title);
-  const existingTitles = await loadExistingTitles(uid);
-  if (existingTitles.has(key)) return false;
-  existingTitles.add(key); // 같은 실행 안에서 같은 uid에 여러 일정이 같은 작품이면 그중 하나만 생성
+  const existing = await loadExisting(uid);
+  const found = existing.get(key);
 
-  await db.collection("records").add({
+  if (found) {
+    if (found.date !== date && found.source !== "auto-schedule") {
+      await found.ref.update({ date, source: "auto-schedule" });
+      console.log(`날짜 보정: uid=${uid} title="${title}" ${found.date} -> ${date}`);
+      found.date = date;
+      found.source = "auto-schedule";
+    }
+    return false;
+  }
+
+  const ref = await db.collection("records").add({
     userId: uid,
     scenarioName: title,
     character: "",
@@ -43,6 +60,7 @@ async function createRecordIfMissing(uid, title, date) {
     source: "auto-schedule",
     createdAt: FieldValue.serverTimestamp(),
   });
+  existing.set(key, { date, ref });
   await db.collection("users").doc(uid).update({
     playedTitles: FieldValue.arrayUnion(normalizeTitle(title)),
   });

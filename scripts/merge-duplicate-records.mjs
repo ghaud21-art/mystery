@@ -1,8 +1,10 @@
 // 일회성 정리: 모임/개인 일정 자동 동기화(sync-attended-records)가 완전일치 비교 때문에
 // 만들어버린 중복 기록들을, 같은 유저+같은 작품(normalizeTitle 기준)이면 하나로 합침.
-// 여러 건 중 "손으로 직접 적은 기록"을 우선 기준으로 남기고, 별점·역할·메모·인생머미(⭐)·공개 여부처럼
-// 남겨둔 기록이 비어있는 필드만 다른 중복 건에서 채워 넣은 뒤 나머지는 삭제함(값을 덮어쓰지 않음).
-// GitHub Actions workflow_dispatch로 수동 실행 (.github/workflows/merge-duplicate-records.yml).
+// 여러 건 중 "모임/개인 일정에서 자동 연동된 기록"(source: auto-schedule)을 우선 기준으로
+// 남긴다 — 그쪽 날짜가 실제 일정 날짜라 더 정확하기 때문. 대신 별점·역할·메모·인생머미(⭐)·
+// 공개 여부처럼 손으로 적어둔 내용은, 남겨둔 기록에 비어있는 필드만 다른 중복 건에서 채워
+// 넣은 뒤 나머지는 삭제함(값을 덮어쓰지 않음). 자동 연동 기록이 하나도 없는 그룹(직접 적은
+// 기록끼리만 중복인 경우)은 기록 내용이 더 채워져 있는 쪽을 남김.
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -10,8 +12,8 @@ function normalizeTitle(t) {
   return (t || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
-// 어느 중복 기록을 "남길 것"으로 볼지 점수화. 별점/역할/메모/즐겨찾기/공개 여부가 채워져 있을수록,
-// 그리고 자동 생성(auto-schedule)이 아니라 직접 적은 기록일수록 점수가 높음.
+// 어느 중복 기록을 "남길 것"으로 볼지 점수화. 자동 연동(auto-schedule) 기록의 날짜가 가장
+// 정확하므로 그 보너스가 다른 항목(별점/역할/메모/즐겨찾기/공개 여부) 점수 합보다 항상 크게 잡음.
 function score(r) {
   let s = 0;
   if (r.rating) s += 2;
@@ -19,7 +21,7 @@ function score(r) {
   if (r.note) s += 1;
   if (r.favorite) s += 1;
   if (r.public) s += 1;
-  if (r.source !== "auto-schedule") s += 1;
+  if (r.source === "auto-schedule") s += 10;
   return s;
 }
 
