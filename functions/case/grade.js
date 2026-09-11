@@ -73,6 +73,7 @@ export async function judgeSeason({ uid, seasonId, isRetry = false }) {
   const season = seasonSnap.data();
   if (!season) throw new HttpsError("not-found", "시즌을 찾을 수 없어요.");
   const totalDays = season.totalDays || 7;
+  const scored = season.finalChoiceScored !== false;
 
   const resultRef = db.doc(`caseResults/${resultId(uid, seasonId)}`);
   const lock = await acquireLock(resultRef, isRetry);
@@ -89,7 +90,7 @@ export async function judgeSeason({ uid, seasonId, isRetry = false }) {
 
     const correctDayCount = submissions.filter((s) => s.day < totalDays && s.correct).length;
     const finalSubmission = submissions.find((s) => s.day === totalDays);
-    const culpritCorrect = !!finalSubmission?.correct;
+    const culpritCorrect = scored && !!finalSubmission?.correct;
 
     // 각 답장을 nonce 기반 구분자로 감싸 프롬프트 인젝션을 방어(자세한 설명은 gemini.js 참고).
     const nonce = makeNonce();
@@ -123,14 +124,21 @@ export async function judgeSeason({ uid, seasonId, isRetry = false }) {
 
     const reachedList = checkpointsResult.filter((c) => c.reached).map((c) => c.description).join("; ") || "없음";
     const missedList = checkpointsResult.filter((c) => !c.reached).map((c) => c.description).join("; ") || "없음";
+    // finalChoiceScored===false인 시즌의 letterPrompt는 {{final_choice}}로 마지막 날 선택(분위기용,
+    // 채점과 무관)의 문구를 받아 편지 도입부에 반영한다. scored 시즌엔 이 플레이스홀더가 아예
+    // 없으므로 치환해도 아무 영향 없음.
+    const finalChoiceText = finalSubmission?.finalChoiceLabel || "";
     const letterPrompt = (season.letterPrompt || "")
       .replaceAll("{{reached_list}}", reachedList)
       .replaceAll("{{missed_list}}", missedList)
       .replaceAll("{{tier}}", tier.name)
+      .replaceAll("{{final_choice}}", finalChoiceText)
       .replaceAll("{{answers}}", essaysText);
     const finalLetter = await generateText(CASE_LETTER_MODEL.value(), letterPrompt);
 
-    const grid = submissions.map((s) => !!s.correct); // 1~totalDays일차 정오, 마지막 칸=최종 지목
+    // scored 시즌은 1~totalDays일차 정오(마지막 칸=최종 지목)를, 아닌 시즌은 점수 없는 마지막 날을
+    // 빼고 1~(totalDays-1)일차 정오만 그리드에 넣는다(공유 이미지 스펙에서도 "6칸 그리드"로 명시).
+    const grid = submissions.filter((s) => scored || s.day < totalDays).map((s) => !!s.correct);
 
     const resultData = {
       uid,

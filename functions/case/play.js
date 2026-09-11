@@ -250,21 +250,37 @@ export const caseSubmitFinal = onCall(
   { timeoutSeconds: 300, memory: "512MiB", secrets: [GEMINI_API_KEY] },
   async (request) => {
     const uid = requireAuth(request);
-    const { seasonId, choice, essay, finalEssay } = request.data || {};
+    const { seasonId, choice, essay, finalEssay, finalChoiceId } = request.data || {};
     const db = getFirestore();
     const season = await loadSeasonForPlay(db, seasonId, uid);
     const totalDays = season.totalDays || 7;
-
-    if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
-      throw new HttpsError("invalid-argument", "범인을 선택해주세요.");
-    }
-    const essayText = String(essay || "").slice(0, 4000);
-    const finalEssayText = finalEssay ? String(finalEssay).slice(0, 4000) : null;
+    // finalChoiceScored===false인 시즌은 마지막 날이 점수 없는 "분위기용" 선택이라 정답 검증이 없음.
+    const scored = season.finalChoiceScored !== false;
 
     const progressRef = db.doc(`caseProgress/${progressId(uid, seasonId)}`);
     const submissionRef = db.doc(`caseSubmissions/${submissionId(uid, seasonId, totalDays)}`);
     const dayDoc = (await db.doc(`caseSeasons/${seasonId}/days/${totalDays}`).get()).data();
     if (!dayDoc) throw new HttpsError("not-found", "마지막 일차 콘텐츠를 찾을 수 없어요.");
+
+    let resolvedChoice = null;
+    let correct = false;
+    let finalChoiceLabel = null;
+    if (scored) {
+      if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
+        throw new HttpsError("invalid-argument", "범인을 선택해주세요.");
+      }
+      resolvedChoice = choice;
+      correct = choice === dayDoc.correctIndex;
+    } else {
+      const options = dayDoc.finalChoice?.options || [];
+      const picked = options.find((o) => o.id === finalChoiceId);
+      if (!picked) throw new HttpsError("invalid-argument", "선택지를 골라주세요.");
+      resolvedChoice = finalChoiceId;
+      finalChoiceLabel = picked.text;
+    }
+
+    const essayText = String(essay || "").slice(0, 4000);
+    const finalEssayText = finalEssay ? String(finalEssay).slice(0, 4000) : null;
 
     await db.runTransaction(async (tx) => {
       const [progressSnap, submissionSnap, countSnap] = await Promise.all([
@@ -277,13 +293,13 @@ export const caseSubmitFinal = onCall(
       if (countSnap.size !== totalDays - 1) {
         throw new HttpsError("failed-precondition", "아직 이전 일차를 다 제출하지 않았어요.");
       }
-      const correct = choice === dayDoc.correctIndex;
       tx.set(submissionRef, {
         uid,
         seasonId,
         day: totalDays,
-        choice,
+        choice: resolvedChoice,
         correct,
+        finalChoiceLabel,
         essay: essayText,
         finalEssay: finalEssayText,
         submittedAt: new Date().toISOString(),
@@ -321,6 +337,7 @@ export const caseGetResult = onCall(async (request) => {
     grid: r.grid || [],
     mode: progressSnap.exists ? progressSnap.data().mode : "realtime",
     truthExplanation: season.truthExplanation || "",
+    finalChoiceScored: season.finalChoiceScored !== false,
   };
 });
 

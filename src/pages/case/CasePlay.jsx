@@ -71,7 +71,12 @@ export default function CasePlay() {
     setError("");
     try {
       if (state.current.isFinal) {
-        await caseSubmitFinal({ seasonId, choice, essay });
+        if (state.current.finalChoice) {
+          const finalChoiceId = state.current.finalChoice.options[choice]?.id;
+          await caseSubmitFinal({ seasonId, essay, finalChoiceId });
+        } else {
+          await caseSubmitFinal({ seasonId, choice, essay });
+        }
         navigate(`/case/${seasonId}/result`);
         return;
       }
@@ -136,7 +141,13 @@ export default function CasePlay() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <ReportPaper eyebrow={`${state.current.day}일차`} title={state.current.reportTitle} body={state.current.reportBody} />
           <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <ChoiceList question={state.current.question} options={state.current.options} selected={choice} onSelect={setChoice} disabled={submitting} />
+            <ChoiceList
+              question={state.current.finalChoice ? state.current.finalChoice.question : state.current.question}
+              options={state.current.finalChoice ? state.current.finalChoice.options.map((o) => o.text) : state.current.options}
+              selected={choice}
+              onSelect={setChoice}
+              disabled={submitting}
+            />
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{state.current.replyPrompt}</div>
               <textarea

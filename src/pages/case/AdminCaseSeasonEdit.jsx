@@ -7,11 +7,12 @@ import ChoiceList from "../../components/case/ChoiceList.jsx";
 
 const EMPTY_SEASON = {
   title: "", landingCopy: { catchphrase: "", intro: "", rules: "", startButtonLabel: "" },
-  totalDays: 7, gradeTable: [], checkpoints: [], judgePrompt: "", letterPrompt: "", truthExplanation: "", published: false,
+  totalDays: 7, finalChoiceScored: true, gradeTable: [], checkpoints: [], judgePrompt: "", letterPrompt: "", truthExplanation: "", published: false,
 };
 const EMPTY_DAY = {
   reportTitle: "", reportBody: "", question: "", options: ["", "", "", ""], correctIndex: 0,
   explanation: "", memoryFragment: "", wrongMessage: "", replyPrompt: "",
+  finalChoice: { question: "", options: [{ id: "a", text: "" }, { id: "b", text: "" }] },
 };
 
 export default function AdminCaseSeasonEdit() {
@@ -96,6 +97,28 @@ export default function AdminCaseSeasonEdit() {
     setSeasonForm((f) => ({ ...f, checkpoints: f.checkpoints.filter((_, idx) => idx !== i) }));
   }
 
+  function addFinalChoiceOption() {
+    setDayForm((f) => ({
+      ...f,
+      finalChoice: { ...f.finalChoice, options: [...f.finalChoice.options, { id: "", text: "" }] },
+    }));
+  }
+  function updateFinalChoiceOption(i, key, value) {
+    setDayForm((f) => ({
+      ...f,
+      finalChoice: {
+        ...f.finalChoice,
+        options: f.finalChoice.options.map((o, idx) => (idx === i ? { ...o, [key]: value } : o)),
+      },
+    }));
+  }
+  function removeFinalChoiceOption(i) {
+    setDayForm((f) => ({
+      ...f,
+      finalChoice: { ...f.finalChoice, options: f.finalChoice.options.filter((_, idx) => idx !== i) },
+    }));
+  }
+
   async function resetTestProgress() {
     if (!window.confirm("내(관리자) 테스트 플레이 기록을 전부 지우고 처음부터 다시 시작할까요?\n다른 사람의 기록에는 영향 없어요.")) return;
     setResetting(true);
@@ -161,6 +184,10 @@ export default function AdminCaseSeasonEdit() {
           <Fld label="수사 규칙"><textarea rows={5} value={seasonForm.landingCopy.rules} onChange={(e) => setSeasonForm({ ...seasonForm, landingCopy: { ...seasonForm.landingCopy, rules: e.target.value } })} style={{ ...inputStyle, resize: "vertical" }} /></Fld>
           <Fld label="시작 버튼 문구"><input value={seasonForm.landingCopy.startButtonLabel} onChange={(e) => setSeasonForm({ ...seasonForm, landingCopy: { ...seasonForm.landingCopy, startButtonLabel: e.target.value } })} style={inputStyle} /></Fld>
           <Fld label="총 일수"><input type="number" min={1} max={7} value={seasonForm.totalDays} onChange={(e) => setSeasonForm({ ...seasonForm, totalDays: Number(e.target.value) })} style={{ ...inputStyle, width: 80 }} /></Fld>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+            <input type="checkbox" checked={seasonForm.finalChoiceScored} onChange={(e) => setSeasonForm({ ...seasonForm, finalChoiceScored: e.target.checked })} />
+            마지막 날에 점수 매기기 (끄면 정답 없는 분위기용 선택 + 에세이만 — 결과 편지 도입부에만 반영되고 점수·등급과 무관)
+          </label>
 
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>체크포인트 (AI 판정 기준)</div>
@@ -202,7 +229,9 @@ export default function AdminCaseSeasonEdit() {
         </Card>
       )}
 
-      {tab === "days" && (
+      {tab === "days" && (() => {
+        const isFinalUnscored = selectedDay === seasonForm.totalDays && !seasonForm.finalChoiceScored;
+        return (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {Array.from({ length: seasonForm.totalDays }, (_, i) => i + 1).map((d) => (
@@ -220,31 +249,57 @@ export default function AdminCaseSeasonEdit() {
             <Fld label="보고서 본문">
               <textarea rows={10} value={dayForm.reportBody} onChange={(e) => setDayForm({ ...dayForm, reportBody: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
             </Fld>
-            <Fld label="문제"><input value={dayForm.question} onChange={(e) => setDayForm({ ...dayForm, question: e.target.value })} style={inputStyle} /></Fld>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>보기 4개 (라디오로 정답 선택)</div>
-              {dayForm.options.map((opt, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                  <input type="radio" checked={dayForm.correctIndex === i} onChange={() => setDayForm({ ...dayForm, correctIndex: i })} />
-                  <input
-                    value={opt}
-                    onChange={(e) => setDayForm({ ...dayForm, options: dayForm.options.map((o, idx) => (idx === i ? e.target.value : o)) })}
-                    style={{ ...inputStyle, flex: 1 }}
-                    placeholder={`보기 ${String.fromCharCode(65 + i)}`}
-                  />
+
+            {isFinalUnscored ? (
+              <>
+                <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
+                  이 시즌은 마지막 날 점수를 안 매기기로 설정돼 있어요("시즌 설정" 탭). 정답 없는 선택지 + 에세이만 받아요.
                 </div>
-              ))}
-            </div>
-            <Fld label="해설 (서버 전용, 플레이어에게 절대 노출 안 됨)">
-              <textarea rows={3} value={dayForm.explanation} onChange={(e) => setDayForm({ ...dayForm, explanation: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
-            </Fld>
-            <Fld label="기억 조각 (정답 시 공개)">
-              <textarea rows={3} value={dayForm.memoryFragment} onChange={(e) => setDayForm({ ...dayForm, memoryFragment: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
-            </Fld>
-            <Fld label="오답 문구">
-              <textarea rows={2} value={dayForm.wrongMessage} onChange={(e) => setDayForm({ ...dayForm, wrongMessage: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
-            </Fld>
-            <Fld label="답장 주제"><input value={dayForm.replyPrompt} onChange={(e) => setDayForm({ ...dayForm, replyPrompt: e.target.value })} style={inputStyle} /></Fld>
+                <Fld label="마지막 선택 질문">
+                  <input value={dayForm.finalChoice.question} onChange={(e) => setDayForm({ ...dayForm, finalChoice: { ...dayForm.finalChoice, question: e.target.value } })} style={inputStyle} />
+                </Fld>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>선택지 (정답 없음, id는 결과 편지 프롬프트의 {"{{final_choice}}"}에 이 선택지 문구로 치환됨)</div>
+                  {dayForm.finalChoice.options.map((opt, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <input placeholder="id" value={opt.id} onChange={(e) => updateFinalChoiceOption(i, "id", e.target.value)} style={{ ...inputStyle, width: 90 }} />
+                      <input placeholder="문구" value={opt.text} onChange={(e) => updateFinalChoiceOption(i, "text", e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+                      <OutlineButton style={{ height: 40, padding: "0 10px" }} onClick={() => removeFinalChoiceOption(i)}>삭제</OutlineButton>
+                    </div>
+                  ))}
+                  <OutlineButton onClick={addFinalChoiceOption}>+ 선택지 추가</OutlineButton>
+                </div>
+                <Fld label="최종 에세이 프롬프트"><input value={dayForm.replyPrompt} onChange={(e) => setDayForm({ ...dayForm, replyPrompt: e.target.value })} style={inputStyle} /></Fld>
+              </>
+            ) : (
+              <>
+                <Fld label="문제"><input value={dayForm.question} onChange={(e) => setDayForm({ ...dayForm, question: e.target.value })} style={inputStyle} /></Fld>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>보기 4개 (라디오로 정답 선택)</div>
+                  {dayForm.options.map((opt, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <input type="radio" checked={dayForm.correctIndex === i} onChange={() => setDayForm({ ...dayForm, correctIndex: i })} />
+                      <input
+                        value={opt}
+                        onChange={(e) => setDayForm({ ...dayForm, options: dayForm.options.map((o, idx) => (idx === i ? e.target.value : o)) })}
+                        style={{ ...inputStyle, flex: 1 }}
+                        placeholder={`보기 ${String.fromCharCode(65 + i)}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <Fld label="해설 (서버 전용, 플레이어에게 절대 노출 안 됨)">
+                  <textarea rows={3} value={dayForm.explanation} onChange={(e) => setDayForm({ ...dayForm, explanation: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
+                </Fld>
+                <Fld label="기억 조각 (정답 시 공개)">
+                  <textarea rows={3} value={dayForm.memoryFragment} onChange={(e) => setDayForm({ ...dayForm, memoryFragment: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
+                </Fld>
+                <Fld label="오답 문구">
+                  <textarea rows={2} value={dayForm.wrongMessage} onChange={(e) => setDayForm({ ...dayForm, wrongMessage: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />
+                </Fld>
+                <Fld label="답장 주제"><input value={dayForm.replyPrompt} onChange={(e) => setDayForm({ ...dayForm, replyPrompt: e.target.value })} style={inputStyle} /></Fld>
+              </>
+            )}
 
             <div style={{ display: "flex", gap: 8 }}>
               <PrimaryButton onClick={saveDay} disabled={savingDay} style={{ flex: 1 }}>{savingDay ? "저장 중…" : `${selectedDay}일차 저장`}</PrimaryButton>
@@ -255,11 +310,18 @@ export default function AdminCaseSeasonEdit() {
           {preview && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <ReportPaper eyebrow={`${selectedDay}일차`} title={dayForm.reportTitle} body={dayForm.reportBody} />
-              <Card><ChoiceList question={dayForm.question} options={dayForm.options} selected={null} disabled /></Card>
+              <Card>
+                {isFinalUnscored ? (
+                  <ChoiceList question={dayForm.finalChoice.question} options={dayForm.finalChoice.options.map((o) => o.text)} selected={null} disabled />
+                ) : (
+                  <ChoiceList question={dayForm.question} options={dayForm.options} selected={null} disabled />
+                )}
+              </Card>
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -1,9 +1,11 @@
-// grid: boolean[] — 1~(N-1)일차 정오 + 마지막 칸은 최종 지목 정오.
-export default function OXGrid({ grid, size = 32 }) {
+// grid: boolean[] — showFinalLabel이 true(기본, 범인 지목까지 점수 매겨지는 시즌)면
+// 1~(N-1)일차 정오 + 마지막 칸은 최종 지목 정오. false(마지막 날이 점수 없는 시즌)면
+// 마지막 날이 그리드에 아예 없으므로 전부 "N일차"로만 표시.
+export default function OXGrid({ grid, size = 32, showFinalLabel = true }) {
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {(grid || []).map((correct, i) => {
-        const isLast = i === grid.length - 1;
+        const isLast = showFinalLabel && i === grid.length - 1;
         return (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <div

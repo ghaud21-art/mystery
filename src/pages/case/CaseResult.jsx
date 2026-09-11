@@ -113,7 +113,7 @@ export default function CaseResult() {
 
         <Card>
           <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 10 }}>일차별 정오</div>
-          <OXGrid grid={result.grid} />
+          <OXGrid grid={result.grid} showFinalLabel={result.finalChoiceScored !== false} />
         </Card>
 
         <Card>

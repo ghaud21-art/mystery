@@ -85,6 +85,7 @@ export const caseAdminSaveSeason = onCall(async (request) => {
     title: patch.title,
     landingCopy: patch.landingCopy || {},
     totalDays: patch.totalDays || 7,
+    finalChoiceScored: patch.finalChoiceScored !== false,
     gradeTable: patch.gradeTable,
     checkpoints: patch.checkpoints,
     judgePrompt: patch.judgePrompt,
@@ -105,25 +106,36 @@ export const caseAdminSaveDay = onCall(async (request) => {
   if (!Number.isInteger(day) || day < 1 || day > 7) throw new HttpsError("invalid-argument", "일차가 올바르지 않아요.");
   if (!patch || typeof patch !== "object") throw new HttpsError("invalid-argument", "저장할 내용이 없어요.");
 
-  const error = validateDayPatch(patch);
+  const db = getFirestore();
+  const seasonSnap = await db.doc(`caseSeasons/${seasonId}`).get();
+  if (!seasonSnap.exists) throw new HttpsError("not-found", "시즌을 찾을 수 없어요.");
+  const season = seasonSnap.data();
+  const isFinalUnscored = day === (season.totalDays || 7) && season.finalChoiceScored === false;
+
+  const error = validateDayPatch(patch, { isFinalUnscored });
   if (error) throw new HttpsError("invalid-argument", error);
 
-  const db = getFirestore();
-  await db.doc(`caseSeasons/${seasonId}/days/${day}`).set(
-    {
-      day,
-      reportTitle: patch.reportTitle || "",
-      reportBody: patch.reportBody,
-      question: patch.question,
-      options: patch.options,
-      correctIndex: patch.correctIndex,
-      explanation: patch.explanation || "",
-      memoryFragment: patch.memoryFragment,
-      wrongMessage: patch.wrongMessage,
-      replyPrompt: patch.replyPrompt,
-    },
-    { merge: true }
-  );
+  const payload = isFinalUnscored
+    ? {
+        day,
+        reportTitle: patch.reportTitle || "",
+        reportBody: patch.reportBody,
+        finalChoice: patch.finalChoice,
+        replyPrompt: patch.replyPrompt,
+      }
+    : {
+        day,
+        reportTitle: patch.reportTitle || "",
+        reportBody: patch.reportBody,
+        question: patch.question,
+        options: patch.options,
+        correctIndex: patch.correctIndex,
+        explanation: patch.explanation || "",
+        memoryFragment: patch.memoryFragment,
+        wrongMessage: patch.wrongMessage,
+        replyPrompt: patch.replyPrompt,
+      };
+  await db.doc(`caseSeasons/${seasonId}/days/${day}`).set(payload, { merge: true });
 
   return { seasonId, day, activeCount: await activePlayerCount(db, seasonId) };
 });
@@ -154,6 +166,7 @@ export const caseAdminCreateSeason = onCall(async (request) => {
       title,
       landingCopy: {},
       totalDays: 7,
+      finalChoiceScored: true,
       gradeTable: [],
       checkpoints: [],
       judgePrompt: "",
@@ -178,8 +191,10 @@ export const caseAdminImportSeason = onCall(async (request) => {
 
   const seasonError = validateSeasonPatch(season);
   if (seasonError) throw new HttpsError("invalid-argument", `시즌: ${seasonError}`);
+  const totalDays = season.totalDays || 7;
   for (const [day, patch] of Object.entries(days)) {
-    const dayError = validateDayPatch(patch);
+    const isFinalUnscored = Number(day) === totalDays && season.finalChoiceScored === false;
+    const dayError = validateDayPatch(patch, { isFinalUnscored });
     if (dayError) throw new HttpsError("invalid-argument", `${day}일차: ${dayError}`);
   }
 

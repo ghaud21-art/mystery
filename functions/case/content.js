@@ -20,6 +20,8 @@ export function publicSeasonView(season) {
 
 // day 문서에서 플레이어에게 보여줘도 되는 필드만 추림.
 // includeQuestion=false면 문제/보기까지도 감춤(예: 아직 제출 전인데 목록에만 걸릴 때 등 방어적으로).
+// finalChoice가 있는 날(점수 없는 마지막 날, season.finalChoiceScored===false)은 채점되는
+// question/options 대신 finalChoice(정답 없는 4지선다형 "선택")를 내려준다.
 export function publicDayView(dayDoc, { includeQuestion = true } = {}) {
   const view = {
     day: dayDoc.day,
@@ -27,8 +29,15 @@ export function publicDayView(dayDoc, { includeQuestion = true } = {}) {
     reportBody: dayDoc.reportBody || "",
   };
   if (includeQuestion) {
-    view.question = dayDoc.question || "";
-    view.options = Array.isArray(dayDoc.options) ? dayDoc.options.slice(0, 4) : [];
+    if (dayDoc.finalChoice) {
+      view.finalChoice = {
+        question: dayDoc.finalChoice.question || "",
+        options: Array.isArray(dayDoc.finalChoice.options) ? dayDoc.finalChoice.options : [],
+      };
+    } else {
+      view.question = dayDoc.question || "";
+      view.options = Array.isArray(dayDoc.options) ? dayDoc.options.slice(0, 4) : [];
+    }
     view.replyPrompt = dayDoc.replyPrompt || "";
   }
   return view;
@@ -51,13 +60,16 @@ export function submittedDayView(dayDoc, submission) {
 }
 
 // 체크포인트 개수 기반으로 만점을 계산 — 절대 24를 하드코딩하지 않는다(어드민이
-// 체크포인트를 추가/삭제할 수 있으므로). 객관식은 최종일(문화가 곧 범인 지목 문제이므로)을
-// 제외한 (totalDays-1)일 각 1점 + 체크포인트 각 2점 + 최종 지목 4점.
+// 체크포인트를 추가/삭제할 수 있으므로). 객관식은 최종일을 제외한 (totalDays-1)일 각 1점 +
+// 체크포인트 각 2점. season.finalChoiceScored가 false가 아니면(기본값) 최종일이 곧 범인 지목
+// 객관식이라는 뜻이라 4점을 더 더한다 — false인 시즌은 최종일이 점수에 안 들어가는 분위기용
+// 선택(finalChoice)이라 이 보너스가 없다.
 export const CULPRIT_POINTS = 4;
 export function computeMaxScore(season) {
   const totalDays = season.totalDays || 7;
   const checkpointCount = Array.isArray(season.checkpoints) ? season.checkpoints.length : 0;
-  return (totalDays - 1) * 1 + checkpointCount * 2 + CULPRIT_POINTS;
+  const culpritBonus = season.finalChoiceScored === false ? 0 : CULPRIT_POINTS;
+  return (totalDays - 1) * 1 + checkpointCount * 2 + culpritBonus;
 }
 
 // 점수 → 등급. 구간 매칭 실패(어드민이 등급표에 빈 구간을 남긴 경우) 시 최하위 등급으로 폴백 —
@@ -107,8 +119,25 @@ export function validateSeasonPatch(patch) {
   return null;
 }
 
-export function validateDayPatch(patch) {
+// isFinalUnscored: 이 날이 시즌의 마지막 날이면서 season.finalChoiceScored===false인 경우.
+// 이때는 채점되는 문제(question/options/correctIndex/memoryFragment/wrongMessage) 대신
+// 점수 없는 finalChoice(질문+선택지, 정답 없음)를 요구한다.
+export function validateDayPatch(patch, { isFinalUnscored = false } = {}) {
   if (!patch.reportBody || !patch.reportBody.trim()) return "보고서 본문을 입력해주세요.";
+
+  if (isFinalUnscored) {
+    if (!patch.replyPrompt || !patch.replyPrompt.trim()) return "최종 에세이 프롬프트를 입력해주세요.";
+    const fc = patch.finalChoice;
+    if (!fc || !fc.question || !fc.question.trim()) return "마지막 선택지 질문을 입력해주세요.";
+    if (!Array.isArray(fc.options) || fc.options.length < 2) return "마지막 선택지를 2개 이상 입력해주세요.";
+    if (fc.options.some((o) => !o.id || !o.id.trim() || !o.text || !o.text.trim())) {
+      return "마지막 선택지마다 id와 문구를 입력해주세요.";
+    }
+    const optionIds = fc.options.map((o) => o.id);
+    if (new Set(optionIds).size !== optionIds.length) return "마지막 선택지 id가 중복돼요.";
+    return null;
+  }
+
   if (!patch.question || !patch.question.trim()) return "문제를 입력해주세요.";
   if (!Array.isArray(patch.options) || patch.options.length !== 4 || patch.options.some((o) => !o || !o.trim())) {
     return "보기 4개를 전부 입력해주세요.";
