@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { caseAdminListSeasons, caseAdminCreateSeason, caseAdminImportSeason } from "../../lib/caseApi.js";
+import { caseAdminListSeasons, caseAdminCreateSeason, caseAdminImportSeason, caseAdminDeleteSeason } from "../../lib/caseApi.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../../components/ui.jsx";
 
 export default function AdminCaseSeasons() {
@@ -18,6 +18,8 @@ export default function AdminCaseSeasons() {
   const [importJson, setImportJson] = useState("");
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
+
+  const [deletingId, setDeletingId] = useState(null);
 
   async function load() {
     try {
@@ -63,6 +65,19 @@ export default function AdminCaseSeasons() {
       setImportStatus(err.message || "가져오기에 실패했어요. JSON 형식을 확인해주세요.");
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function handleDelete(s) {
+    if (!window.confirm(`"${s.title}" 시즌을 정말 삭제할까요?\n이 시즌의 콘텐츠뿐 아니라, 지금까지 플레이어들의 진행상황·제출·결과도 전부 함께 삭제돼요. 되돌릴 수 없어요.`)) return;
+    setDeletingId(s.seasonId);
+    try {
+      await caseAdminDeleteSeason({ seasonId: s.seasonId });
+      setSeasons((list) => (list || []).filter((x) => x.seasonId !== s.seasonId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -133,6 +148,13 @@ export default function AdminCaseSeasons() {
               <div style={{ display: "flex", gap: 8 }}>
                 <Link to={`/admin/case/${s.seasonId}/stats`}><OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>현황</OutlineButton></Link>
                 <Link to={`/admin/case/${s.seasonId}`}><OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>편집</OutlineButton></Link>
+                <OutlineButton
+                  style={{ height: 32, padding: "0 12px", fontSize: 12, borderColor: "var(--danger)", color: "var(--danger)" }}
+                  onClick={() => handleDelete(s)}
+                  disabled={deletingId === s.seasonId}
+                >
+                  {deletingId === s.seasonId ? "삭제 중…" : "삭제"}
+                </OutlineButton>
               </div>
             </Card>
           ))}

@@ -213,6 +213,42 @@ export const caseAdminImportSeason = onCall(async (request) => {
   return { seasonId, dayCount: Object.keys(days).length };
 });
 
+// 시즌 자체를 완전히 삭제. 일차 콘텐츠뿐 아니라 이 시즌에 딸린 진행상황/제출/결과까지 전부
+// 같이 지운다 — 안 지우면 존재하지 않는 시즌을 참조하는 고아 데이터로 남기 때문.
+export const caseAdminDeleteSeason = onCall(async (request) => {
+  await requireAdmin(request);
+  const { seasonId } = request.data || {};
+  checkSeasonId(seasonId);
+  const db = getFirestore();
+
+  const seasonRef = db.doc(`caseSeasons/${seasonId}`);
+  if (!(await seasonRef.get()).exists) throw new HttpsError("not-found", "시즌을 찾을 수 없어요.");
+
+  const [daysSnap, progressSnap, submissionsSnap, resultsSnap] = await Promise.all([
+    db.collection(`caseSeasons/${seasonId}/days`).get(),
+    db.collection("caseProgress").where("seasonId", "==", seasonId).get(),
+    db.collection("caseSubmissions").where("seasonId", "==", seasonId).get(),
+    db.collection("caseResults").where("seasonId", "==", seasonId).get(),
+  ]);
+
+  const refsToDelete = [
+    seasonRef,
+    ...daysSnap.docs.map((d) => d.ref),
+    ...progressSnap.docs.map((d) => d.ref),
+    ...submissionsSnap.docs.map((d) => d.ref),
+    ...resultsSnap.docs.map((d) => d.ref),
+  ];
+
+  // Firestore 배치 쓰기는 한 번에 최대 500건이라 넉넉히 나눠서 처리.
+  for (let i = 0; i < refsToDelete.length; i += 450) {
+    const batch = db.batch();
+    refsToDelete.slice(i, i + 450).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+
+  return { seasonId, deletedPlayers: progressSnap.size };
+});
+
 export const caseAdminGetStats = onCall(async (request) => {
   await requireAdmin(request);
   const { seasonId } = request.data || {};
