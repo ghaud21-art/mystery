@@ -249,11 +249,6 @@ export default function Records() {
 
   const markedDates = useMemo(() => new Set(Object.keys(recordsByDate)), [recordsByDate]);
 
-  const distinctTitleCount = useMemo(
-    () => new Set((records || []).map((r) => normalizeTitle(r.scenarioName))).size,
-    [records]
-  );
-
   return (
     <div className="fade-in">
       <PageHeader
@@ -264,8 +259,7 @@ export default function Records() {
 
       {records && records.length > 0 && (
         <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: -16, marginBottom: 16 }}>
-          지금까지 <span style={{ color: "var(--accent)", fontWeight: 700 }}>{distinctTitleCount}개</span> 작품 플레이
-          {records.length !== distinctTitleCount && ` (총 ${records.length}회 기록)`}
+          지금까지 <span style={{ color: "var(--accent)", fontWeight: 700 }}>{records.length}건</span> 플레이 기록
         </div>
       )}
 
