@@ -3,7 +3,8 @@
 // playedTitles로, 인생머미(즐겨찾기) 제목을 favoriteTitles로 함께 저장해두고
 // "같이 안한 머미" 추천이나 친구 프로필 요약 등에서는 이 필드만 참고함.
 import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
-import { db } from "./firebase.js";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "./firebase.js";
 import { normalizeTitle } from "./scenarioUtils.js";
 
 export async function syncPlayedTitles(uid) {
@@ -16,4 +17,12 @@ export async function syncPlayedTitles(uid) {
     favoriteTitles,
     playedCount: records.length,
   });
+}
+
+// 시나리오별 평균 별점(비공개 후기의 별점도 포함) — 개별 기록 내용은 절대 안 돌아옴.
+// { [normalizeTitle(제목)]: { avg, count } }
+export async function fetchScenarioRatingSummary() {
+  const fn = httpsCallable(functions, "getScenarioRatingSummary");
+  const res = await fn();
+  return res.data.ratings || {};
 }

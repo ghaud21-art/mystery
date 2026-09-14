@@ -111,3 +111,6 @@ export const sendHourBeforeReminders = onSchedule({ schedule: "every 15 minutes"
 // functions/case/content.js 참고).
 export * from "./case/play.js";
 export * from "./case/admin.js";
+
+// 시나리오 평균 별점 집계 (비공개 후기의 별점도 포함, 후기 내용은 절대 노출 안 함).
+export * from "./records.js";

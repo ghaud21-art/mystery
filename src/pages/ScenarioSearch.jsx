@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
 import { GENRES, normalizeTitle, parsePlayerRange, PLAYER_TABS, scenarioGenre } from "../lib/scenarioUtils.js";
-import { syncPlayedTitles } from "../lib/records.js";
+import { syncPlayedTitles, fetchScenarioRatingSummary } from "../lib/records.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
@@ -34,7 +34,7 @@ export default function ScenarioSearch() {
   const [savingId, setSavingId] = useState(null);
   const [openReviewsId, setOpenReviewsId] = useState(null);
   const [friends, setFriends] = useState([]);
-  const [publicRatings, setPublicRatings] = useState({});
+  const [ratingSummary, setRatingSummary] = useState({});
 
   async function loadScenarios() {
     const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
@@ -58,23 +58,17 @@ export default function ScenarioSearch() {
   }, [profile?.friends]);
 
   useEffect(() => {
+    // 평점 평균은 공개/비공개 후기 상관없이 전부 합산(Cloud Functions에서 집계) — 후기 본문(메모·역할)은
+    // 여전히 public일 때만 다른 사람에게 보이고, 여기엔 숫자 집계만 내려옴.
+    if (!profile?.id) return;
     (async () => {
-      // 공개(public) 감상평의 별점만 모아서 시나리오별 평균을 계산 (비공개 기록은 접근 불가)
-      const snap = await getDocs(query(collection(db, "records"), where("public", "==", true)));
-      const sums = {};
-      snap.docs.forEach((d) => {
-        const r = d.data();
-        if (!r.rating || !r.scenarioName) return;
-        const key = normalizeTitle(r.scenarioName);
-        if (!sums[key]) sums[key] = { sum: 0, count: 0 };
-        sums[key].sum += r.rating;
-        sums[key].count += 1;
-      });
-      const avgMap = {};
-      Object.entries(sums).forEach(([key, { sum, count }]) => { avgMap[key] = { avg: sum / count, count }; });
-      setPublicRatings(avgMap);
+      try {
+        setRatingSummary(await fetchScenarioRatingSummary());
+      } catch (err) {
+        console.error(err);
+      }
     })();
-  }, []);
+  }, [profile?.id]);
 
   const selectedScenario = openReviewsId ? scenarios?.find((s) => s.id === openReviewsId) : null;
 
@@ -338,7 +332,7 @@ export default function ScenarioSearch() {
                   const played = playedTitles?.has(normalizeTitle(s.title));
                   const quickOpen = quickAddId === s.id;
                   const wished = (profile?.wishlist || []).includes(s.id);
-                  const ratingInfo = publicRatings[normalizeTitle(s.title)];
+                  const ratingInfo = ratingSummary[normalizeTitle(s.title)];
                   return (
                     <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -368,7 +362,7 @@ export default function ScenarioSearch() {
                         {s.duration && <InfoRow icon="⏱️" value={`${s.duration} 소요`} />}
                         <InfoRow
                           icon="⭐"
-                          value={ratingInfo ? `평균 ${ratingInfo.avg.toFixed(1)} (${ratingInfo.count}명 평가)` : "아직 공개 평점 없음"}
+                          value={ratingInfo ? `평균 ${ratingInfo.avg.toFixed(1)} (${ratingInfo.count}명 평가)` : "아직 평점 없음"}
                         />
                       </div>
 
