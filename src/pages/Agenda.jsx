@@ -30,7 +30,7 @@ export default function Agenda() {
   const [personalForm, setPersonalForm] = useState(EMPTY_PERSONAL_FORM);
   const [editingPersonalId, setEditingPersonalId] = useState(null);
   const [personalBusy, setPersonalBusy] = useState(false);
-  const [personalTitleQueue, setPersonalTitleQueue] = useState([]);
+  const [personalEntryQueue, setPersonalEntryQueue] = useState([]);
   const [calendarSyncBusy, setCalendarSyncBusy] = useState(false);
   const [calendarSyncStatus, setCalendarSyncStatus] = useState("");
   const [personalCategoryFilter, setPersonalCategoryFilter] = useState("all");
@@ -165,7 +165,7 @@ export default function Agenda() {
   function startCreatePersonal() {
     setEditingPersonalId(null);
     setPersonalForm(EMPTY_PERSONAL_FORM);
-    setPersonalTitleQueue([]);
+    setPersonalEntryQueue([]);
     setShowPersonalForm(true);
   }
 
@@ -176,43 +176,52 @@ export default function Agenda() {
       location: s.location || "", datetime: s.datetime || "", endDatetime: s.endDatetime || "",
       color: s.color || PRESET_COLORS[1],
     });
-    setPersonalTitleQueue([]);
+    setPersonalEntryQueue([]);
     setShowPersonalForm(true);
   }
 
-  // 같은 날 여러 작품을 한 날짜/장소로 한 번에 등록할 수 있도록, 입력 중인 제목을
-  // 목록에 쌓아뒀다가 등록 시 한꺼번에 각각 별도 일정으로 만든다.
-  function queueTitle() {
-    const t = personalForm.title.trim();
-    if (!t) return;
-    if (!personalTitleQueue.includes(t)) setPersonalTitleQueue((q) => [...q, t]);
-    setPersonalForm((f) => ({ ...f, title: "" }));
+  // 하나하나 따로 등록하지 않고, 제목·장소·시작/종료 시각을 각각 다르게 채운 뒤 "+ 목록에 추가"로
+  // 쌓아뒀다가 한 번에 등록할 수 있게 함(예: 방탈출처럼 같은 날 서로 다른 시간대에 예약한 여러 건).
+  // 카테고리·색깔만 배치 전체에 공통으로 적용되고, 나머지는 항목별로 따로 저장된다.
+  function queueEntry() {
+    const title = personalForm.title.trim();
+    const location = personalForm.location.trim();
+    if (!title || !location || !personalForm.datetime) return;
+    setPersonalEntryQueue((q) => [...q, { title, location, datetime: personalForm.datetime, endDatetime: personalForm.endDatetime }]);
+    setPersonalForm((f) => ({ ...f, title: "", datetime: "", endDatetime: "" }));
   }
-  function removeQueuedTitle(t) {
-    setPersonalTitleQueue((q) => q.filter((x) => x !== t));
+  function removeQueuedEntry(i) {
+    setPersonalEntryQueue((q) => q.filter((_, idx) => idx !== i));
   }
 
   async function submitPersonalForm(e) {
     e.preventDefault();
 
+    let busyDates = [];
     if (editingPersonalId) {
       setPersonalBusy(true);
       await updateDoc(doc(db, "personalSchedules", editingPersonalId), personalForm);
       await syncPersonalToCalendar(editingPersonalId, personalForm);
+      busyDates = expandDateRange(personalForm.datetime, personalForm.endDatetime);
     } else {
-      const titles = [...personalTitleQueue, ...(personalForm.title.trim() ? [personalForm.title.trim()] : [])];
-      if (titles.length === 0) return;
+      const trailing =
+        personalForm.title.trim() && personalForm.location.trim() && personalForm.datetime
+          ? [{ title: personalForm.title.trim(), location: personalForm.location.trim(), datetime: personalForm.datetime, endDatetime: personalForm.endDatetime }]
+          : [];
+      const entries = [...personalEntryQueue, ...trailing];
+      if (entries.length === 0) return;
       setPersonalBusy(true);
-      for (const title of titles) {
+      for (const entry of entries) {
         const ref = await addDoc(collection(db, "personalSchedules"), {
-          ...personalForm, title, userId: profile.id, createdAt: serverTimestamp(),
+          category: personalForm.category, color: personalForm.color, ...entry,
+          userId: profile.id, createdAt: serverTimestamp(),
         });
-        await syncPersonalToCalendar(ref.id, { ...personalForm, title });
+        await syncPersonalToCalendar(ref.id, entry);
       }
+      busyDates = [...new Set(entries.flatMap((entry) => expandDateRange(entry.datetime, entry.endDatetime)))];
     }
 
     // 가능일 연동: 새로 등록한 일정 날짜는 더 이상 "가능한 날"이 아니므로 자동으로 뺌
-    const busyDates = expandDateRange(personalForm.datetime, personalForm.endDatetime);
     const availableDates = profile.availableDates || [];
     const nextAvailable = availableDates.filter((d) => !busyDates.includes(d));
     if (nextAvailable.length !== availableDates.length) {
@@ -221,7 +230,7 @@ export default function Agenda() {
     }
 
     setPersonalForm(EMPTY_PERSONAL_FORM);
-    setPersonalTitleQueue([]);
+    setPersonalEntryQueue([]);
     setEditingPersonalId(null);
     setShowPersonalForm(false);
     setPersonalBusy(false);
@@ -512,22 +521,15 @@ export default function Agenda() {
               ))}
             </div>
             <div style={{ position: "relative" }}>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  required={personalTitleQueue.length === 0}
-                  placeholder="이름 (시나리오/테마/게임 등)"
-                  value={personalForm.title}
-                  onChange={(e) => { setPersonalForm({ ...personalForm, title: e.target.value }); setShowTitleSuggestions(true); }}
-                  onFocus={() => setShowTitleSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
-                  style={{ ...inputStyle, flex: 1 }}
-                />
-                {!editingPersonalId && (
-                  <OutlineButton type="button" style={{ flex: "none", padding: "0 12px", fontSize: 12 }} onClick={queueTitle}>
-                    + 목록에 추가
-                  </OutlineButton>
-                )}
-              </div>
+              <input
+                required={personalEntryQueue.length === 0}
+                placeholder="이름 (시나리오/테마/게임 등)"
+                value={personalForm.title}
+                onChange={(e) => { setPersonalForm({ ...personalForm, title: e.target.value }); setShowTitleSuggestions(true); }}
+                onFocus={() => setShowTitleSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
+                style={inputStyle}
+              />
               {showTitleSuggestions && titleSuggestions.length > 0 && (
                 <div style={{
                   position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
@@ -551,36 +553,11 @@ export default function Agenda() {
                 </div>
               )}
             </div>
-
-            {personalTitleQueue.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {personalTitleQueue.map((t) => (
-                  <span key={t} style={{
-                    display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "4px 6px 4px 10px",
-                    borderRadius: 999, background: "var(--accent-dim)", color: "var(--accent)",
-                  }}>
-                    {t}
-                    <button
-                      type="button"
-                      onClick={() => removeQueuedTitle(t)}
-                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {!editingPersonalId && (
-              <div style={{ fontSize: 10.5, color: "var(--text-sub)" }}>
-                같은 날 여러 작품을 했다면, 제목을 입력하고 "+ 목록에 추가"를 눌러서 한 번에 등록할 수 있어요. (날짜·장소·카테고리는 전부 동일하게 적용돼요)
-              </div>
-            )}
-            <input required placeholder="장소" value={personalForm.location}
+            <input required={personalEntryQueue.length === 0} placeholder="장소" value={personalForm.location}
               onChange={(e) => setPersonalForm({ ...personalForm, location: e.target.value })} style={inputStyle} />
             <label style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
               시작 시각
-              <input required type="datetime-local" value={personalForm.datetime}
+              <input required={personalEntryQueue.length === 0} type="datetime-local" value={personalForm.datetime}
                 onChange={(e) => setPersonalForm({ ...personalForm, datetime: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
             </label>
             <label style={{ fontSize: 11.5, color: "var(--text-sub)" }}>
@@ -588,6 +565,39 @@ export default function Agenda() {
               <input type="datetime-local" value={personalForm.endDatetime} min={personalForm.datetime}
                 onChange={(e) => setPersonalForm({ ...personalForm, endDatetime: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
             </label>
+
+            {!editingPersonalId && (
+              <>
+                <OutlineButton type="button" onClick={queueEntry}>+ 이 일정 목록에 추가</OutlineButton>
+                <div style={{ fontSize: 10.5, color: "var(--text-sub)" }}>
+                  같은 날 시간이 다른 일정(예: 방탈출 여러 타임)이나 서로 다른 작품을 여러 개 등록한다면, 제목·장소·시각을 채우고
+                  "+ 이 일정 목록에 추가"를 눌러 하나씩 쌓은 뒤 한 번에 등록할 수 있어요. (카테고리·색깔만 전부 동일하게 적용돼요)
+                </div>
+              </>
+            )}
+
+            {personalEntryQueue.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {personalEntryQueue.map((entry, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "6px 6px 6px 12px",
+                    borderRadius: 8, background: "var(--accent-dim)", color: "var(--accent)",
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, overflowWrap: "break-word" }}>{entry.title}</div>
+                      <div style={{ fontSize: 10.5, opacity: 0.85 }}>{formatDate(entry.datetime)} · {entry.location}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeQueuedEntry(i)}
+                      style={{ flex: "none", background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 6 }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginBottom: 6 }}>캘린더 색깔</div>
               <ColorPicker
@@ -604,8 +614,9 @@ export default function Agenda() {
                 : editingPersonalId
                 ? "수정 저장"
                 : (() => {
-                    const count = personalTitleQueue.length + (personalForm.title.trim() ? 1 : 0);
-                    return count > 1 ? `${count}개 작품 한 번에 등록하기` : "등록하기";
+                    const hasTrailing = !!(personalForm.title.trim() && personalForm.location.trim() && personalForm.datetime);
+                    const count = personalEntryQueue.length + (hasTrailing ? 1 : 0);
+                    return count > 1 ? `${count}개 일정 한 번에 등록하기` : "등록하기";
                   })()}
             </PrimaryButton>
           </form>
