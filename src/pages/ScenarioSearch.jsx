@@ -35,6 +35,7 @@ export default function ScenarioSearch() {
   const [openReviewsId, setOpenReviewsId] = useState(null);
   const [friends, setFriends] = useState([]);
   const [ratingSummary, setRatingSummary] = useState({});
+  const [sortBy, setSortBy] = useState("title");
 
   async function loadScenarios() {
     const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
@@ -121,8 +122,18 @@ export default function ScenarioSearch() {
       .filter((s) => !wishlistOnly || (profile?.wishlist || []).includes(s.id))
       .filter((s) => !unplayedOnly || !playedTitles || !playedTitles.has(normalizeTitle(s.title)))
       .filter((s) => !q || s.title.toLowerCase().includes(q) || (s.publisher || "").toLowerCase().includes(q));
-    return [...list].sort((a, b) => a.title.localeCompare(b.title, "ko"));
-  }, [scenarios, search, genre, category, playerTab, wishlistOnly, unplayedOnly, profile?.wishlist, playedTitles]);
+    return [...list].sort((a, b) => {
+      if (sortBy === "rating") {
+        const ra = ratingSummary[normalizeTitle(a.title)];
+        const rb = ratingSummary[normalizeTitle(b.title)];
+        const avgDiff = (rb?.avg ?? -1) - (ra?.avg ?? -1);
+        if (avgDiff !== 0) return avgDiff;
+        const countDiff = (rb?.count ?? 0) - (ra?.count ?? 0);
+        if (countDiff !== 0) return countDiff;
+      }
+      return a.title.localeCompare(b.title, "ko");
+    });
+  }, [scenarios, search, genre, category, playerTab, wishlistOnly, unplayedOnly, profile?.wishlist, playedTitles, sortBy, ratingSummary]);
 
   async function submitRequest(e) {
     e.preventDefault();
@@ -251,6 +262,25 @@ export default function ScenarioSearch() {
           </button>
         </div>
 
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 11.5, color: "var(--text-sub)", flex: "none" }}>정렬</span>
+          {[{ key: "title", label: "가나다순" }, { key: "rating", label: "평점순" }].map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => setSortBy(o.key)}
+              style={{
+                height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                border: `1.5px solid ${sortBy === o.key ? "var(--accent)" : "var(--border)"}`,
+                background: sortBy === o.key ? "var(--accent-dim)" : "transparent",
+                color: sortBy === o.key ? "var(--accent)" : "var(--text-sub)",
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
         <input
           placeholder="시나리오 이름으로 검색"
           value={search}
@@ -325,7 +355,7 @@ export default function ScenarioSearch() {
           </EmptyState>
         ) : (
           <>
-            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 (가나다순)</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)" }}>총 {filtered.length}개 ({sortBy === "rating" ? "평점순" : "가나다순"})</div>
             <ScrollBox maxHeight="clamp(280px, calc(100vh - 380px), 640px)">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
                 {filtered.map((s) => {
