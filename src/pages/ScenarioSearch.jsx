@@ -9,7 +9,7 @@ import Avatar from "../components/Avatar.jsx";
 import StarRating from "../components/StarRating.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
-const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
+const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false, note: "" };
 const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 
 const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline", genre: GENRES[0] };
@@ -99,7 +99,7 @@ export default function ScenarioSearch() {
     if (!record) return;
     setQuickAddId(s.id);
     setEditingRecordId(record.id);
-    setQuickForm({ character: record.character || "", rating: record.rating || 0, favorite: !!record.favorite });
+    setQuickForm({ character: record.character || "", rating: record.rating || 0, favorite: !!record.favorite, note: record.note || "" });
   }
 
   async function saveQuickAdd(s) {
@@ -108,6 +108,7 @@ export default function ScenarioSearch() {
       character: quickForm.character.trim(),
       rating: quickForm.rating > 0 ? Number(quickForm.rating) : null,
       favorite: quickForm.favorite,
+      note: quickForm.note.trim(),
     };
     if (editingRecordId) {
       await updateDoc(doc(db, "records", editingRecordId), payload);
@@ -116,7 +117,6 @@ export default function ScenarioSearch() {
         userId: profile.id,
         scenarioName: s.title,
         ...payload,
-        note: "",
         date: new Date().toISOString().slice(0, 10),
         spoiler: true,
         public: false,
@@ -461,6 +461,13 @@ export default function ScenarioSearch() {
                               ⭐ 인생머미
                             </label>
                           </div>
+                          <textarea
+                            placeholder="후기 메모 (선택)"
+                            rows={2}
+                            value={quickForm.note}
+                            onChange={(e) => setQuickForm({ ...quickForm, note: e.target.value })}
+                            style={{ ...inputStyle, padding: "7px 10px", fontSize: 12, resize: "vertical" }}
+                          />
                           <div style={{ display: "flex", gap: 6 }}>
                             <OutlineButton style={{ flex: 1, height: 30, fontSize: 11.5 }} onClick={() => { setQuickAddId(null); setEditingRecordId(null); }}>취소</OutlineButton>
                             <PrimaryButton style={{ flex: 1, height: 30, fontSize: 11.5 }} disabled={savingId === s.id} onClick={() => saveQuickAdd(s)}>
