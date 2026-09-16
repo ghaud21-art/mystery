@@ -5,12 +5,13 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
-import { normalizeTitle } from "../lib/scenarioUtils.js";
+import { normalizeTitle, formatStars } from "../lib/scenarioUtils.js";
 import { canUseAI, KAKAO_CONTACT_URL, matchRecordsToCanonicalTitles } from "../lib/ai.js";
 import { AILimitNotice, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 
 const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false };
+const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 const VIEW_TABS = [
   { key: "list", label: "목록 (가나다순)" },
   { key: "calendar", label: "캘린더로 보기" },
@@ -375,7 +376,7 @@ export default function Records() {
               별점 (선택)
               <select value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })} style={{ ...inputStyle, width: 100 }}>
                 <option value={0}>평가 안 함</option>
-                {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n}</option>)}
+                {RATING_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
             <label style={{ fontSize: 12.5, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 8 }}>
@@ -476,7 +477,7 @@ function RecordCard({ r, revealed, setRevealed, startEdit, removeRecord, compact
         </div>
         {r.rating ? (
           <span style={{ fontSize: 12, color: "var(--accent)", letterSpacing: 1, whiteSpace: "nowrap" }}>
-            {"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}
+            {formatStars(r.rating)}
           </span>
         ) : (
           <span style={{ fontSize: 11, color: "var(--text-sub)", whiteSpace: "nowrap" }}>평가 안 함</span>

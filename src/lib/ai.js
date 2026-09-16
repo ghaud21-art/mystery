@@ -163,7 +163,7 @@ export async function parseBulkRecords(profile, rawText) {
     "아래는 사용자가 다른 곳에 적어두었던 플레이 기록을 그대로 붙여넣은 텍스트입니다.",
     "형식이 자유롭습니다 (한 줄에 시나리오 제목만 있을 수도, 날짜·캐릭터·별점이 섞여 있을 수도 있어요).",
     "이걸 읽고 각 플레이 기록을 하나씩 뽑아 아래 형식의 순수 JSON 배열로만 출력하세요. 다른 설명은 쓰지 마세요.",
-    '[{"scenarioName": "시나리오 제목", "character": "역할(모르면 빈 문자열)", "rating": 1~5 숫자 또는 null(모르면), "date": "YYYY-MM-DD 또는 null(모르면)", "note": "특이사항(없으면 빈 문자열)"}]',
+    '[{"scenarioName": "시나리오 제목", "character": "역할(모르면 빈 문자열)", "rating": 0.5~5 사이 숫자(0.5 단위 가능, 예: 4.5) 또는 null(모르면), "date": "YYYY-MM-DD 또는 null(모르면)", "note": "특이사항(없으면 빈 문자열)"}]',
     "시나리오 제목이 아닌 줄(빈 줄, 인사말 등)은 무시하세요.",
     "",
     "--- 붙여넣은 텍스트 ---",
@@ -179,7 +179,7 @@ export async function parseBulkRecords(profile, rawText) {
     .map((r) => ({
       scenarioName: r.scenarioName.trim(),
       character: r.character?.trim() || "",
-      rating: Number.isInteger(r.rating) && r.rating >= 1 && r.rating <= 5 ? r.rating : null,
+      rating: typeof r.rating === "number" && r.rating >= 0.5 && r.rating <= 5 && Number.isInteger(r.rating * 2) ? r.rating : null,
       date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || "") ? r.date : null,
       note: r.note?.trim() || "",
     }));

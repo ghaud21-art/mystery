@@ -3,12 +3,13 @@ import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, quer
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { displayName } from "../lib/profileDisplay.js";
-import { GENRES, normalizeTitle, parsePlayerRange, PLAYER_TABS, scenarioGenre } from "../lib/scenarioUtils.js";
+import { GENRES, normalizeTitle, parsePlayerRange, PLAYER_TABS, scenarioGenre, formatStars } from "../lib/scenarioUtils.js";
 import { syncPlayedTitles, fetchScenarioRatingSummary } from "../lib/records.js";
 import Avatar from "../components/Avatar.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
+const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 
 const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline", genre: GENRES[0] };
 const CATEGORY_TABS = [
@@ -417,7 +418,7 @@ export default function ScenarioSearch() {
                               style={{ ...inputStyle, padding: "7px 10px", fontSize: 12, flex: 1 }}
                             >
                               <option value={0}>평가 안 함</option>
-                              {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)}</option>)}
+                              {RATING_OPTIONS.map((n) => <option key={n} value={n}>{formatStars(n)}</option>)}
                             </select>
                             <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--accent)", whiteSpace: "nowrap" }}>
                               <input type="checkbox" checked={quickForm.favorite} onChange={(e) => setQuickForm({ ...quickForm, favorite: e.target.checked })} />
@@ -537,7 +538,7 @@ function ScenarioReviews({ scenarioTitle, played }) {
           <div key={r.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}>
             <div style={{ fontSize: 11.5, fontWeight: 600 }}>
               {displayName(r.user)}
-              {r.rating ? <span style={{ color: "var(--accent)" }}> · {"★".repeat(r.rating)}</span> : null}
+              {r.rating ? <span style={{ color: "var(--accent)" }}> · {formatStars(r.rating)}</span> : null}
             </div>
             {r.note && (
               <div

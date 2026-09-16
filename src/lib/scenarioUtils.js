@@ -20,6 +20,15 @@ export function scenarioGenre(s) {
   return s?.genre || GENRES[0];
 }
 
+// 0.5점 단위 별점을 별 문자열로 표시. 정수면 "★★★★☆"처럼 별만, 0.5가 끼면 소수점 값을
+// 괄호로 덧붙임(반쪽 별 글리프는 기기/폰트마다 다르게 보이거나 아예 안 보이는 경우가 많아서).
+export function formatStars(rating, max = 5) {
+  if (!rating) return "";
+  const floor = Math.floor(rating);
+  const stars = "★".repeat(floor) + "☆".repeat(Math.max(0, max - floor));
+  return Number.isInteger(rating) ? stars : `${stars} (${rating})`;
+}
+
 export const PLAYER_TABS = [
   { key: "all", label: "전체", test: () => true },
   { key: "2", label: "2인", test: (r) => r.min <= 2 && r.max >= 2 },
