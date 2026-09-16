@@ -6,6 +6,7 @@ import { displayName } from "../lib/profileDisplay.js";
 import { GENRES, normalizeTitle, parsePlayerRange, PLAYER_TABS, scenarioGenre, formatStars } from "../lib/scenarioUtils.js";
 import { syncPlayedTitles, fetchScenarioRatingSummary } from "../lib/records.js";
 import Avatar from "../components/Avatar.jsx";
+import StarRating from "../components/StarRating.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
 const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false };
@@ -393,7 +394,16 @@ export default function ScenarioSearch() {
                         {s.duration && <InfoRow icon="⏱️" value={`${s.duration} 소요`} />}
                         <InfoRow
                           icon="⭐"
-                          value={ratingInfo ? `평균 ${ratingInfo.avg.toFixed(1)} (${ratingInfo.count}명 평가)` : "아직 평점 없음"}
+                          value={
+                            ratingInfo ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                <StarRating value={ratingInfo.avg} size={12} />
+                                {ratingInfo.avg.toFixed(1)} ({ratingInfo.count}명 평가)
+                              </span>
+                            ) : (
+                              "아직 평점 없음"
+                            )
+                          }
                         />
                       </div>
 
@@ -536,9 +546,9 @@ function ScenarioReviews({ scenarioTitle, played }) {
       ) : (
         reviews.map((r) => (
           <div key={r.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 600 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 600 }}>
               {displayName(r.user)}
-              {r.rating ? <span style={{ color: "var(--accent)" }}> · {formatStars(r.rating)}</span> : null}
+              {r.rating ? <StarRating value={r.rating} size={11} /> : null}
             </div>
             {r.note && (
               <div

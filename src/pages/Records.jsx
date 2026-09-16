@@ -5,10 +5,11 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
-import { normalizeTitle, formatStars } from "../lib/scenarioUtils.js";
+import { normalizeTitle } from "../lib/scenarioUtils.js";
 import { canUseAI, KAKAO_CONTACT_URL, matchRecordsToCanonicalTitles } from "../lib/ai.js";
 import { AILimitNotice, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
+import StarRating from "../components/StarRating.jsx";
 
 const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false };
 const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
@@ -476,8 +477,9 @@ function RecordCard({ r, revealed, setRevealed, startEdit, removeRecord, compact
           {r.favorite && "⭐ "}{r.scenarioName}
         </div>
         {r.rating ? (
-          <span style={{ fontSize: 12, color: "var(--accent)", letterSpacing: 1, whiteSpace: "nowrap" }}>
-            {formatStars(r.rating)}
+          <span style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+            <StarRating value={r.rating} size={13} />
+            {!Number.isInteger(r.rating) && <span style={{ fontSize: 11, color: "var(--text-sub)" }}>{r.rating}</span>}
           </span>
         ) : (
           <span style={{ fontSize: 11, color: "var(--text-sub)", whiteSpace: "nowrap" }}>평가 안 함</span>
