@@ -31,7 +31,9 @@ export default function ScenarioSearch() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitStatus, setSubmitStatus] = useState("");
   const [playedTitles, setPlayedTitles] = useState(null);
+  const [myRecordsByTitle, setMyRecordsByTitle] = useState({});
   const [quickAddId, setQuickAddId] = useState(null);
+  const [editingRecordId, setEditingRecordId] = useState(null);
   const [quickForm, setQuickForm] = useState(QUICK_FORM_EMPTY);
   const [savingId, setSavingId] = useState(null);
   const [openReviewsId, setOpenReviewsId] = useState(null);
@@ -46,7 +48,16 @@ export default function ScenarioSearch() {
 
   async function loadPlayedTitles() {
     const snap = await getDocs(query(collection(db, "records"), where("userId", "==", profile.id)));
-    setPlayedTitles(new Set(snap.docs.map((d) => normalizeTitle(d.data().scenarioName))));
+    const titles = new Set();
+    const byTitle = {};
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      const key = normalizeTitle(data.scenarioName);
+      titles.add(key);
+      (byTitle[key] ||= []).push({ id: d.id, ...data });
+    });
+    setPlayedTitles(titles);
+    setMyRecordsByTitle(byTitle);
   }
 
   useEffect(() => { loadScenarios(); }, []);
@@ -77,26 +88,45 @@ export default function ScenarioSearch() {
 
   function startQuickAdd(s) {
     setQuickAddId(s.id);
+    setEditingRecordId(null);
     setQuickForm(QUICK_FORM_EMPTY);
+  }
+
+  // 이미 기록된 작품도 카드에서 바로 별점/캐릭터/인생머미를 고칠 수 있게. 같은 작품 기록이
+  // 여러 건(재플레이 등)이면 그중 첫 기록만 고치고, 나머지는 기록 페이지에서 따로 관리해야 함.
+  function startEditRecord(s) {
+    const record = (myRecordsByTitle[normalizeTitle(s.title)] || [])[0];
+    if (!record) return;
+    setQuickAddId(s.id);
+    setEditingRecordId(record.id);
+    setQuickForm({ character: record.character || "", rating: record.rating || 0, favorite: !!record.favorite });
   }
 
   async function saveQuickAdd(s) {
     setSavingId(s.id);
-    await addDoc(collection(db, "records"), {
-      userId: profile.id,
-      scenarioName: s.title,
+    const payload = {
       character: quickForm.character.trim(),
       rating: quickForm.rating > 0 ? Number(quickForm.rating) : null,
-      note: "",
-      date: new Date().toISOString().slice(0, 10),
-      spoiler: true,
       favorite: quickForm.favorite,
-      public: false,
-      createdAt: serverTimestamp(),
-    });
+    };
+    if (editingRecordId) {
+      await updateDoc(doc(db, "records", editingRecordId), payload);
+    } else {
+      await addDoc(collection(db, "records"), {
+        userId: profile.id,
+        scenarioName: s.title,
+        ...payload,
+        note: "",
+        date: new Date().toISOString().slice(0, 10),
+        spoiler: true,
+        public: false,
+        createdAt: serverTimestamp(),
+      });
+    }
     await syncPlayedTitles(profile.id);
-    setPlayedTitles((prev) => new Set(prev).add(normalizeTitle(s.title)));
+    await loadPlayedTitles();
     setQuickAddId(null);
+    setEditingRecordId(null);
     setSavingId(null);
   }
 
@@ -409,11 +439,7 @@ export default function ScenarioSearch() {
 
                       {openReviewsId === s.id && <ScenarioReviews scenarioTitle={s.title} played={played} />}
 
-                      {played ? (
-                        <OutlineButton disabled style={{ width: "100%", height: 32, fontSize: 12, color: "var(--text-sub)" }}>
-                          ✓ 이미 기록됨
-                        </OutlineButton>
-                      ) : quickOpen ? (
+                      {quickOpen ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 8, background: "var(--bg-sub)" }}>
                           <input
                             placeholder="맡은 캐릭터/역할 (선택)"
@@ -436,11 +462,20 @@ export default function ScenarioSearch() {
                             </label>
                           </div>
                           <div style={{ display: "flex", gap: 6 }}>
-                            <OutlineButton style={{ flex: 1, height: 30, fontSize: 11.5 }} onClick={() => setQuickAddId(null)}>취소</OutlineButton>
+                            <OutlineButton style={{ flex: 1, height: 30, fontSize: 11.5 }} onClick={() => { setQuickAddId(null); setEditingRecordId(null); }}>취소</OutlineButton>
                             <PrimaryButton style={{ flex: 1, height: 30, fontSize: 11.5 }} disabled={savingId === s.id} onClick={() => saveQuickAdd(s)}>
                               {savingId === s.id ? "저장 중…" : "저장"}
                             </PrimaryButton>
                           </div>
+                        </div>
+                      ) : played ? (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <OutlineButton disabled style={{ flex: 1, height: 32, fontSize: 12, color: "var(--text-sub)" }}>
+                            ✓ 이미 기록됨
+                          </OutlineButton>
+                          <OutlineButton style={{ flex: "none", height: 32, padding: "0 12px", fontSize: 12 }} onClick={() => startEditRecord(s)}>
+                            수정
+                          </OutlineButton>
                         </div>
                       ) : (
                         <OutlineButton style={{ width: "100%", height: 32, fontSize: 12 }} onClick={() => startQuickAdd(s)}>
