@@ -46,8 +46,13 @@ export const sendDayBeforeReminders = onSchedule({ schedule: "0 0 * * *", timeZo
   const nowKst = new Date(Date.now() + KST_OFFSET_MS);
   const tomorrowKst = new Date(Date.UTC(nowKst.getUTCFullYear(), nowKst.getUTCMonth(), nowKst.getUTCDate() + 1));
   const dayAfterKst = new Date(tomorrowKst.getTime() + 24 * 60 * 60 * 1000);
-  const rangeStart = new Date(tomorrowKst.getTime() - KST_OFFSET_MS).toISOString().slice(0, 16);
-  const rangeEnd = new Date(dayAfterKst.getTime() - KST_OFFSET_MS).toISOString().slice(0, 16);
+  // s.datetime은 datetime-local input이 만든, 타임존 정보가 없는 "한국 시간 그대로의" 문자열이다
+  // (예: "2026-09-19T19:00" — UTC 아님). tomorrowKst/dayAfterKst의 UTC 필드를 만들 때 이미
+  // "내일 KST 자정" 값을 그대로 넣어뒀으므로(Date.UTC(...)에 KST 기준 연/월/일을 씀), 여기서
+  // 다시 오프셋을 빼면 9시간 더 앞당겨져서 "오늘 저녁"까지 범위에 들어가버리는 버그가 있었다
+  // (그래서 당일 일정에도 "내일" 리마인더가 잘못 발송됨). toISOString()은 그대로 슬라이스만.
+  const rangeStart = tomorrowKst.toISOString().slice(0, 16);
+  const rangeEnd = dayAfterKst.toISOString().slice(0, 16);
 
   const snap = await db.collection("schedules").where("datetime", ">=", rangeStart).where("datetime", "<", rangeEnd).get();
   if (snap.empty) return;
