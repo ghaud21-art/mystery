@@ -20,6 +20,7 @@ import ColorPicker from "../components/ColorPicker.jsx";
 
 const TABS = [
   { id: "schedules", label: "일정" },
+  { id: "negotiating", label: "일정 협의" },
   { id: "availability", label: "가능일" },
   { id: "compat", label: "궁합" },
   { id: "unplayed", label: "같이 안한 머미" },
@@ -208,6 +209,7 @@ export default function GroupDetail() {
       </div>
 
       {tab === "schedules" && <SchedulesTab group={group} profile={profile} members={members} />}
+      {tab === "negotiating" && <NegotiatingTab group={group} profile={profile} members={members} />}
       {tab === "availability" && <AvailabilityTab members={members} profile={profile} />}
       {tab === "compat" && <CompatTab members={members} />}
       {tab === "unplayed" && <UnplayedTab members={members} profile={profile} />}
@@ -488,13 +490,8 @@ function SchedulesTab({ group, profile, members }) {
       });
   }, [items]);
 
-  // 협의 중(날짜 미정)인 것과 확정된 일정은 목적이 달라서 따로 보여줌 — 협의 중 목록은
-  // "구두로 하겠다고 한 테마들"을 한눈에 보려는 용도라 카테고리 필터와 무관하게 항상 전부 보여줌.
-  const negotiatingItems = useMemo(
-    () => (sortedItems || []).filter((s) => (s.status || "confirmed") === "negotiating"),
-    [sortedItems]
-  );
-
+  // 협의 중(날짜 미정)인 항목은 별도의 "일정 협의" 탭(NegotiatingTab)에서 다루므로 이 확정
+  // 일정 목록에서는 제외함.
   const displayItems = useMemo(() => {
     if (!sortedItems) return sortedItems;
     const confirmedOnly = sortedItems.filter((s) => (s.status || "confirmed") !== "negotiating");
@@ -731,24 +728,6 @@ function SchedulesTab({ group, profile, members }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>📋 일정 협의 중인 테마</div>
-          <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 2 }}>
-            날짜는 아직 안 정했지만 구두로 하겠다고 한 작품들이에요. 카테고리 필터와 무관하게 전부 모아 보여줘요.
-          </div>
-        </div>
-        {items === null ? (
-          <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
-        ) : negotiatingItems.length === 0 ? (
-          <EmptyState>아직 협의 중인 작품이 없어요. "+ 일정 추가"에서 "일정 협의로 등록"을 체크해보세요.</EmptyState>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {negotiatingItems.map(renderScheduleCard)}
-          </div>
-        )}
-      </Card>
-
       <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
         <Card>
           <MonthCalendar
@@ -880,37 +859,300 @@ function SchedulesTab({ group, profile, members }) {
                 </div>
               )}
             </div>
-            <input required={!form.negotiating} placeholder={form.negotiating ? "장소 (아직 안 정했으면 비워두세요)" : "장소"} value={form.location}
+            <input required placeholder="장소" value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
 
-            <label style={{
-              display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-sub)",
-              padding: "10px 12px", borderRadius: 8, background: "var(--bg-sub)",
-            }}>
-              <input
-                type="checkbox"
-                checked={form.negotiating}
-                onChange={(e) => setForm({ ...form, negotiating: e.target.checked, datetime: "", endDatetime: "" })}
-              />
-              일정 협의로 등록 (날짜는 나중에 정해요) — 사람들 참여 의향과 가능일을 모아서 확정할 수 있어요
-            </label>
-
-            {!form.negotiating && (
-              <>
-                <Fld label="시작 시각">
-                  <input required type="datetime-local" value={form.datetime}
-                    onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
-                </Fld>
-                <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
-                  <input type="datetime-local" value={form.endDatetime} min={form.datetime}
-                    onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
-                </Fld>
-              </>
-            )}
+            <div style={{ fontSize: 11, color: "var(--text-sub)" }}>
+              날짜가 아직 안 정해졌다면, "일정 협의" 탭에서 먼저 참여 의향을 모은 뒤 날짜를 확정해보세요.
+            </div>
+            <Fld label="시작 시각">
+              <input required type="datetime-local" value={form.datetime}
+                onChange={(e) => setForm({ ...form, datetime: e.target.value })} style={inputStyle} />
+            </Fld>
+            <Fld label="종료 시각 (1박2일 등 여러 날 일정이면 입력, 선택)">
+              <input type="datetime-local" value={form.endDatetime} min={form.datetime}
+                onChange={(e) => setForm({ ...form, endDatetime: e.target.value })} style={inputStyle} />
+            </Fld>
             <PrimaryButton type="submit">{editingId ? "수정 저장" : "등록하기"}</PrimaryButton>
           </form>
         </Card>
       )}
+    </div>
+  );
+}
+
+// "구두로 하겠다고 약속한" 작품들을 날짜 없이 모아두는 탭. 참여 의향을 모으고, 참여 의향을
+// 표시한 사람들의 "가능일"이 겹치는 날짜가 보이면 그 자리에서 바로 확정 일정으로 등록할 수 있음
+// (확정되면 SchedulesTab의 "일정" 탭 목록으로 옮겨감).
+function NegotiatingTab({ group, profile, members }) {
+  const [items, setItems] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ category: CATEGORIES[0], title: "", location: "" });
+  const [scenarios, setScenarios] = useState([]);
+  const [showTitleSuggestions, setShowTitleSuggestions] = useState(false);
+  const [candidatesFor, setCandidatesFor] = useState(null);
+
+  async function load() {
+    try {
+      setLoadError("");
+      const snap = await getDocs(
+        query(collection(db, "schedules"), where("groupId", "==", group.id), where("status", "==", "negotiating"))
+      );
+      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error(err);
+      setLoadError("목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+      setItems([]);
+    }
+  }
+  useEffect(() => { load(); }, [group.id]);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "approved")));
+      setScenarios(snap.docs.map((d) => d.data()));
+    })();
+  }, []);
+
+  const titleSuggestions = (() => {
+    if (form.category !== "머더미스터리" && form.category !== "크라임씬") return [];
+    const q = form.title.trim().toLowerCase();
+    if (!q) return [];
+    return scenarios.filter((sc) => sc.title.toLowerCase().includes(q)).slice(0, 6);
+  })();
+
+  async function submitForm(e) {
+    e.preventDefault();
+    await addDoc(collection(db, "schedules"), {
+      category: form.category,
+      title: form.title,
+      location: form.location.trim(),
+      datetime: "",
+      endDatetime: "",
+      status: "negotiating",
+      groupId: group.id,
+      hostId: profile.id,
+      hostName: displayName(profile),
+      attendees: { [profile.id]: "yes" },
+      createdAt: serverTimestamp(),
+    });
+    setForm({ category: CATEGORIES[0], title: "", location: "" });
+    setShowForm(false);
+    load();
+  }
+
+  async function removeItem(id) {
+    if (!window.confirm("이 협의 항목을 삭제할까요?")) return;
+    await deleteDoc(doc(db, "schedules", id));
+    load();
+  }
+
+  async function vote(schedule, currentStatus) {
+    const next = currentStatus === "yes" ? "no" : "yes";
+    await updateDoc(doc(db, "schedules", schedule.id), { [`attendees.${profile.id}`]: next });
+    load();
+  }
+
+  function attendeeCandidates(schedule) {
+    const attendeeIds = Object.entries(schedule.attendees || {})
+      .filter(([, v]) => v === "yes")
+      .map(([uid]) => uid);
+    const attendeeMembers = members.filter((m) => attendeeIds.includes(m.id));
+    const counts = {};
+    attendeeMembers.forEach((m) => {
+      (m.availableDates || []).forEach((d) => { counts[d] = (counts[d] || 0) + 1; });
+    });
+    const candidates = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5);
+    return { candidates, total: attendeeMembers.length };
+  }
+
+  // 참여 의향을 표시한 사람들의 가능일이 맞는 날짜가 보이면, 폼 없이 그 자리에서 바로 확정.
+  // 기본 19시로 등록하고, 정확한 시간·장소는 "일정" 탭에서 나중에 고칠 수 있음.
+  async function confirmDate(schedule, dateKey) {
+    if (!window.confirm(`"${schedule.title}"을(를) ${formatDateOnly(dateKey)} 19:00으로 확정할까요?\n(시간·장소는 "일정" 탭에서 나중에 수정할 수 있어요)`)) return;
+    const payload = { status: "confirmed", datetime: `${dateKey}T19:00`, endDatetime: "" };
+    await updateDoc(doc(db, "schedules", schedule.id), payload);
+    if (schedule.attendees?.[profile.id] === "yes" && getValidCalendarToken()) {
+      try {
+        await upsertCalendarEvent(profile.id, `group_${schedule.id}`, {
+          title: schedule.title, location: schedule.location, startLocal: payload.datetime, endLocal: payload.endDatetime,
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    load();
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>일정 협의</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginTop: 2 }}>
+              날짜는 아직 안 정했지만 구두로 하겠다고 한 작품들을 모아둬요. 참여 의향을 모으고, 가능일이 맞는 날짜가 보이면 바로 일정으로 확정할 수 있어요.
+            </div>
+          </div>
+          <PrimaryButton onClick={() => setShowForm((v) => !v)}>{showForm ? "닫기" : "+ 협의 추가"}</PrimaryButton>
+        </div>
+
+        {loadError && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{loadError}</div>}
+
+        {showForm && (
+          <form onSubmit={submitForm} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 10, background: "var(--bg-sub)" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {CATEGORIES.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setForm({ ...form, category: c })}
+                  style={{
+                    padding: "6px 12px", borderRadius: 999, fontSize: 12.5,
+                    border: `1.5px solid ${form.category === c ? "var(--accent)" : "var(--border)"}`,
+                    background: form.category === c ? "var(--accent-dim)" : "transparent",
+                    color: form.category === c ? "var(--accent)" : "var(--text)",
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+            <div style={{ position: "relative" }}>
+              <input
+                required
+                placeholder={form.category === "머더미스터리" || form.category === "크라임씬" ? "이름 (입력하면 시나리오 목록에서 찾아드려요)" : "이름 (테마/게임 등)"}
+                value={form.title}
+                onChange={(e) => { setForm({ ...form, title: e.target.value }); setShowTitleSuggestions(true); }}
+                onFocus={() => setShowTitleSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowTitleSuggestions(false), 150)}
+                style={inputStyle}
+              />
+              {showTitleSuggestions && titleSuggestions.length > 0 && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
+                  background: "var(--card)", border: "1.5px solid var(--border)", borderRadius: 8,
+                  boxShadow: "0 4px 16px rgba(0,0,0,.15)", overflow: "hidden",
+                }}>
+                  {titleSuggestions.map((sc) => (
+                    <button
+                      type="button"
+                      key={sc.title}
+                      onMouseDown={() => { setForm({ ...form, title: sc.title }); setShowTitleSuggestions(false); }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "9px 14px",
+                        background: "none", border: "none", borderBottom: "1px solid var(--border)", fontSize: 13,
+                      }}
+                    >
+                      {sc.title}
+                      {sc.publisher && <span style={{ color: "var(--text-sub)", fontSize: 11.5 }}> · {sc.publisher}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <input placeholder="장소 (아직 안 정했으면 비워두세요)" value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })} style={inputStyle} />
+            <PrimaryButton type="submit">등록하기</PrimaryButton>
+          </form>
+        )}
+
+        {items === null ? (
+          <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
+        ) : items.length === 0 ? (
+          <EmptyState>아직 협의 중인 작품이 없어요. &ldquo;+ 협의 추가&rdquo;로 시작해보세요.</EmptyState>
+        ) : (
+          <ScrollBox maxHeight="clamp(320px, calc(100vh - 340px), 720px)">
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {items.map((s) => {
+                const yesCount = Object.values(s.attendees || {}).filter((v) => v === "yes").length;
+                const mine = s.attendees?.[profile.id];
+                const isHost = s.hostId === profile.id;
+                const candidatesOpen = candidatesFor === s.id;
+                const { candidates, total } = candidatesOpen ? attendeeCandidates(s) : { candidates: [], total: 0 };
+                return (
+                  <Card key={s.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                      <div>
+                        <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text-sub)", background: "var(--bg-sub)", padding: "2px 8px", borderRadius: 999 }}>
+                          {s.category || "머더미스터리"}
+                        </span>
+                        <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{s.title}</div>
+                        <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: 4 }}>
+                          날짜 미정{s.location ? ` · ${s.location}` : ""} · 제안 {s.hostName}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>참여 의향 {yesCount}명</div>
+                        {yesCount > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                            {Object.entries(s.attendees || {})
+                              .filter(([, v]) => v === "yes")
+                              .map(([uid]) => {
+                                const m = members.find((mm) => mm.id === uid);
+                                return (
+                                  <span key={uid} style={{
+                                    fontSize: 11, padding: "2px 8px", borderRadius: 999,
+                                    background: "var(--bg-sub)", color: "var(--text-sub)", whiteSpace: "nowrap",
+                                  }}>
+                                    {m ? displayName(m) : "탈퇴한 유저"}
+                                  </span>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <OutlineButton onClick={() => vote(s, mine)}>
+                          {mine === "yes" ? "의향 취소" : "참여 의향 있어요"}
+                        </OutlineButton>
+                        {isHost && (
+                          <OutlineButton
+                            style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+                            onClick={() => removeItem(s.id)}
+                          >
+                            삭제
+                          </OutlineButton>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setCandidatesFor(candidatesOpen ? null : s.id)}
+                        style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "none", padding: 0 }}
+                      >
+                        {candidatesOpen ? "날짜 후보 접기 ▲" : "참여 의향 인원 기준 날짜 후보 보기 ▼"}
+                      </button>
+                      {candidatesOpen && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                          {candidates.length === 0 ? (
+                            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+                              참여 의향을 표시한 사람들이 아직 &ldquo;가능일&rdquo;을 설정하지 않았어요.
+                            </div>
+                          ) : (
+                            candidates.map(([date, count]) => (
+                              <div key={date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: "var(--bg-sub)", flexWrap: "wrap", gap: 8 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDateOnly(date)}</span>
+                                <span style={{ fontSize: 12, color: count === total ? "var(--success)" : "var(--text-sub)" }}>
+                                  {count}/{total}명 가능{count === total ? " · 전원 가능! 🎉" : ""}
+                                </span>
+                                <OutlineButton style={{ height: 28, padding: "0 10px", fontSize: 11.5, flex: "none" }} onClick={() => confirmDate(s, date)}>
+                                  이 날짜로 확정
+                                </OutlineButton>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </ScrollBox>
+        )}
+      </Card>
     </div>
   );
 }
