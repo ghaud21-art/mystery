@@ -14,7 +14,7 @@ import StarRating from "../components/StarRating.jsx";
 const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false };
 const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 const VIEW_TABS = [
-  { key: "list", label: "목록 (가나다순)" },
+  { key: "list", label: "목록" },
   { key: "calendar", label: "캘린더로 보기" },
 ];
 
@@ -38,6 +38,7 @@ export default function Records() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [view, setView] = useState("list");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("title");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [attendedByDate, setAttendedByDate] = useState({});
   const [aiCleanupBusy, setAiCleanupBusy] = useState(false);
@@ -240,8 +241,15 @@ export default function Records() {
           (r.note || "").toLowerCase().includes(q)
         )
       : records;
-    return [...filtered].sort((a, b) => a.scenarioName.localeCompare(b.scenarioName, "ko"));
-  }, [records, search]);
+    const byTitle = (a, b) => a.scenarioName.localeCompare(b.scenarioName, "ko");
+    // 같은 날짜 기록끼리는 먼저 저장한 순서(createdAt)로, 그것도 같으면 제목순으로 안정적으로 정렬
+    const byDate = (a, b) =>
+      (a.date || "").localeCompare(b.date || "") ||
+      (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0) ||
+      byTitle(a, b);
+    const sorter = sortBy === "newest" ? (a, b) => byDate(b, a) : sortBy === "oldest" ? byDate : byTitle;
+    return [...filtered].sort(sorter);
+  }, [records, search, sortBy]);
 
   const recordsByDate = useMemo(() => {
     const map = {};
@@ -405,6 +413,24 @@ export default function Records() {
         <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>
       ) : view === "list" ? (
         <>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11.5, color: "var(--text-sub)", flex: "none" }}>정렬</span>
+            {[{ key: "newest", label: "최신순" }, { key: "oldest", label: "오래된순" }, { key: "title", label: "가나다순" }].map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => setSortBy(o.key)}
+                style={{
+                  height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                  border: `1.5px solid ${sortBy === o.key ? "var(--accent)" : "var(--border)"}`,
+                  background: sortBy === o.key ? "var(--accent-dim)" : "transparent",
+                  color: sortBy === o.key ? "var(--accent)" : "var(--text-sub)",
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
           <input
             placeholder="시나리오 이름·캐릭터·메모로 내 기록 검색"
             value={search}
