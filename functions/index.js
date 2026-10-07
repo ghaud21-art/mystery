@@ -122,3 +122,6 @@ export * from "./records.js";
 
 // 일정에 넣은 작품이 시나리오 DB에 없으면 자동으로 등록 요청(대기)을 만들어 줌.
 export * from "./scenarioAutoRequest.js";
+
+// 끝난 일정을 참석자 플레이 기록으로 자동 연동 (예전 GitHub Actions 크론을 대체).
+export * from "./syncAttendedRecords.js";
