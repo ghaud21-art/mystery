@@ -19,7 +19,8 @@ export const getScenarioRatingSummary = onCall(async (request) => {
   const sums = {};
   snap.docs.forEach((d) => {
     const r = d.data();
-    if (!r.rating || !r.scenarioName) return;
+    // GM으로 진행한 기록의 별점은 플레이어 입장의 평가가 아니므로 평균에서 제외.
+    if (!r.rating || !r.scenarioName || r.role === "gm") return;
     const key = normalizeTitle(r.scenarioName);
     if (!sums[key]) sums[key] = { sum: 0, count: 0 };
     sums[key].sum += r.rating;

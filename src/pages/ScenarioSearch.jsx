@@ -9,7 +9,7 @@ import Avatar from "../components/Avatar.jsx";
 import StarRating from "../components/StarRating.jsx";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 
-const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false, note: "" };
+const QUICK_FORM_EMPTY = { character: "", rating: 0, favorite: false, note: "", gm: false };
 const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 
 const EMPTY_FORM = { title: "", publisher: "", playerCount: "", duration: "", description: "", category: "offline", genre: GENRES[0] };
@@ -99,7 +99,7 @@ export default function ScenarioSearch() {
     if (!record) return;
     setQuickAddId(s.id);
     setEditingRecordId(record.id);
-    setQuickForm({ character: record.character || "", rating: record.rating || 0, favorite: !!record.favorite, note: record.note || "" });
+    setQuickForm({ character: record.character || "", rating: record.rating || 0, favorite: !!record.favorite, note: record.note || "", gm: record.role === "gm" });
   }
 
   async function saveQuickAdd(s) {
@@ -109,6 +109,7 @@ export default function ScenarioSearch() {
       rating: quickForm.rating > 0 ? Number(quickForm.rating) : null,
       favorite: quickForm.favorite,
       note: quickForm.note.trim(),
+      role: quickForm.gm ? "gm" : "player",
     };
     if (editingRecordId) {
       await updateDoc(doc(db, "records", editingRecordId), payload);
@@ -461,6 +462,10 @@ export default function ScenarioSearch() {
                               ⭐ 인생머미
                             </label>
                           </div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-sub)" }}>
+                            <input type="checkbox" checked={quickForm.gm} onChange={(e) => setQuickForm({ ...quickForm, gm: e.target.checked })} />
+                            🎭 GM(진행자)으로 참여
+                          </label>
                           <textarea
                             placeholder="후기 메모 (선택)"
                             rows={2}

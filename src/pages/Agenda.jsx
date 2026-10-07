@@ -16,7 +16,7 @@ import { PRESET_COLORS } from "../lib/colors.js";
 const PERSONAL_CATEGORIES = ["머더미스터리", "크라임씬", "방탈출", "보드게임", "기타"];
 const ALL_CATEGORIES = ["all", ...PERSONAL_CATEGORIES];
 const EMPTY_PERSONAL_FORM = {
-  category: PERSONAL_CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "", color: PRESET_COLORS[1],
+  category: PERSONAL_CATEGORIES[0], title: "", location: "", datetime: "", endDatetime: "", color: PRESET_COLORS[1], asGm: false,
 };
 
 export default function Agenda() {
@@ -174,7 +174,7 @@ export default function Agenda() {
     setPersonalForm({
       category: s.category || PERSONAL_CATEGORIES[0], title: s.title || "",
       location: s.location || "", datetime: s.datetime || "", endDatetime: s.endDatetime || "",
-      color: s.color || PRESET_COLORS[1],
+      color: s.color || PRESET_COLORS[1], asGm: !!s.asGm,
     });
     setPersonalEntryQueue([]);
     setShowPersonalForm(true);
@@ -213,7 +213,7 @@ export default function Agenda() {
       setPersonalBusy(true);
       for (const entry of entries) {
         const ref = await addDoc(collection(db, "personalSchedules"), {
-          category: personalForm.category, color: personalForm.color, ...entry,
+          category: personalForm.category, color: personalForm.color, asGm: !!personalForm.asGm, ...entry,
           userId: profile.id, createdAt: serverTimestamp(),
         });
         await syncPersonalToCalendar(ref.id, entry);
@@ -598,6 +598,10 @@ export default function Agenda() {
                 ))}
               </div>
             )}
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-sub)" }}>
+              <input type="checkbox" checked={!!personalForm.asGm} onChange={(e) => setPersonalForm({ ...personalForm, asGm: e.target.checked })} />
+              🎭 GM(진행자)으로 참여 — 일정이 끝나면 기록에도 GM으로 남아요
+            </label>
             <div>
               <div style={{ fontSize: 11.5, color: "var(--text-sub)", marginBottom: 6 }}>캘린더 색깔</div>
               <ColorPicker

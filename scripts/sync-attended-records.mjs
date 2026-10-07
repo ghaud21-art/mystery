@@ -33,7 +33,7 @@ async function loadExisting(uid) {
   return map;
 }
 
-async function createRecordIfMissing(uid, title, date) {
+async function createRecordIfMissing(uid, title, date, asGm = false) {
   const key = normalizeTitle(title);
   const existing = await loadExisting(uid);
   const found = existing.get(key);
@@ -56,6 +56,7 @@ async function createRecordIfMissing(uid, title, date) {
     note: "",
     spoiler: true,
     favorite: false,
+    role: asGm ? "gm" : "player",
     date,
     source: "auto-schedule",
     createdAt: FieldValue.serverTimestamp(),
@@ -89,7 +90,7 @@ for (const doc of dueGroupSchedules) {
     .map(([uid]) => uid);
 
   for (const uid of attendeeIds) {
-    if (await createRecordIfMissing(uid, s.title, date)) created++;
+    if (await createRecordIfMissing(uid, s.title, date, !!s.gms?.[uid])) created++;
   }
   await doc.ref.update({ recordSynced: true });
 }
@@ -107,7 +108,7 @@ console.log(`개인 일정 처리 대상: ${duePersonalSchedules.length}건`);
 for (const doc of duePersonalSchedules) {
   const s = doc.data();
   const date = s.datetime.slice(0, 10);
-  if (await createRecordIfMissing(s.userId, s.title, date)) created++;
+  if (await createRecordIfMissing(s.userId, s.title, date, !!s.asGm)) created++;
   await doc.ref.update({ recordSynced: true });
 }
 

@@ -11,7 +11,7 @@ import { AILimitNotice, Card, EmptyState, OutlineButton, PageHeader, PrimaryButt
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import StarRating from "../components/StarRating.jsx";
 
-const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false };
+const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false, role: "player" };
 const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 const VIEW_TABS = [
   { key: "list", label: "목록" },
@@ -39,6 +39,7 @@ export default function Records() {
   const [view, setView] = useState("list");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("title");
+  const [roleFilter, setRoleFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [attendedByDate, setAttendedByDate] = useState({});
   const [aiCleanupBusy, setAiCleanupBusy] = useState(false);
@@ -114,7 +115,7 @@ export default function Records() {
     setEditingId(r.id);
     setForm({
       scenarioName: r.scenarioName, character: r.character || "", rating: r.rating || 0,
-      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite, public: !!r.public,
+      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite, public: !!r.public, role: r.role === "gm" ? "gm" : "player",
     });
     setShowForm(true);
   }
@@ -215,6 +216,7 @@ export default function Records() {
             spoiler: original?.spoiler !== false,
             favorite: !!original?.favorite,
             public: !!original?.public,
+            role: original?.role === "gm" ? "gm" : "player",
             createdAt: serverTimestamp(),
           });
         }
@@ -234,13 +236,14 @@ export default function Records() {
   const sortedRecords = useMemo(() => {
     if (!records) return [];
     const q = search.trim().toLowerCase();
+    const byRole = roleFilter === "all" ? records : records.filter((r) => (r.role === "gm") === (roleFilter === "gm"));
     const filtered = q
-      ? records.filter((r) =>
+      ? byRole.filter((r) =>
           r.scenarioName.toLowerCase().includes(q) ||
           (r.character || "").toLowerCase().includes(q) ||
           (r.note || "").toLowerCase().includes(q)
         )
-      : records;
+      : byRole;
     const byTitle = (a, b) => a.scenarioName.localeCompare(b.scenarioName, "ko");
     // 같은 날짜 기록끼리는 먼저 저장한 순서(createdAt)로, 그것도 같으면 제목순으로 안정적으로 정렬
     const byDate = (a, b) =>
@@ -249,7 +252,9 @@ export default function Records() {
       byTitle(a, b);
     const sorter = sortBy === "newest" ? (a, b) => byDate(b, a) : sortBy === "oldest" ? byDate : byTitle;
     return [...filtered].sort(sorter);
-  }, [records, search, sortBy]);
+  }, [records, search, sortBy, roleFilter]);
+
+  const gmCount = useMemo(() => (records || []).filter((r) => r.role === "gm").length, [records]);
 
   const recordsByDate = useMemo(() => {
     const map = {};
@@ -269,7 +274,8 @@ export default function Records() {
 
       {records && records.length > 0 && (
         <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: -16, marginBottom: 16 }}>
-          지금까지 <span style={{ color: "var(--accent)", fontWeight: 700 }}>{records.length}건</span> 플레이 기록
+          지금까지 <span style={{ color: "var(--accent)", fontWeight: 700 }}>{records.length}건</span> 기록
+          {gmCount > 0 && ` (플레이어 ${records.length - gmCount}건 · GM ${gmCount}건)`}
         </div>
       )}
 
@@ -392,6 +398,10 @@ export default function Records() {
               <input type="checkbox" checked={form.spoiler} onChange={(e) => setForm({ ...form, spoiler: e.target.checked })} />
               역할/캐릭터를 스포일러로 블러 처리
             </label>
+            <label style={{ fontSize: 12.5, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="checkbox" checked={form.role === "gm"} onChange={(e) => setForm({ ...form, role: e.target.checked ? "gm" : "player" })} />
+              🎭 GM(진행자)으로 참여했어요 — 별점은 작품 평균에 반영되지 않아요
+            </label>
             <label style={{ fontSize: 12.5, color: "var(--accent)", display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
               <input type="checkbox" checked={form.favorite} onChange={(e) => setForm({ ...form, favorite: e.target.checked })} />
               ⭐ 인생머미 (추천 카드에 이름이 표시돼요)
@@ -425,6 +435,24 @@ export default function Records() {
                   border: `1.5px solid ${sortBy === o.key ? "var(--accent)" : "var(--border)"}`,
                   background: sortBy === o.key ? "var(--accent-dim)" : "transparent",
                   color: sortBy === o.key ? "var(--accent)" : "var(--text-sub)",
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11.5, color: "var(--text-sub)", flex: "none" }}>역할</span>
+            {[{ key: "all", label: "전체" }, { key: "player", label: "플레이어" }, { key: "gm", label: "GM" }].map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => setRoleFilter(o.key)}
+                style={{
+                  height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                  border: `1.5px solid ${roleFilter === o.key ? "var(--accent)" : "var(--border)"}`,
+                  background: roleFilter === o.key ? "var(--accent-dim)" : "transparent",
+                  color: roleFilter === o.key ? "var(--accent)" : "var(--text-sub)",
                 }}
               >
                 {o.label}
@@ -501,6 +529,11 @@ function RecordCard({ r, revealed, setRevealed, startEdit, removeRecord, compact
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 14.5, fontWeight: 600, overflowWrap: "break-word" }}>
           {r.favorite && "⭐ "}{r.scenarioName}
+          {r.role === "gm" && (
+            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "var(--bg)", background: "var(--accent)", borderRadius: 999, padding: "1px 7px", verticalAlign: "middle" }}>
+              GM
+            </span>
+          )}
         </div>
         {r.rating ? (
           <span style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>

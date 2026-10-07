@@ -580,6 +580,12 @@ function SchedulesTab({ group, profile, members }) {
     load();
   }
 
+  // 내가 이 일정에 GM(진행자)으로 참석하는지 표시 — 일정이 끝나면 자동 생성되는 기록에 GM으로 반영됨.
+  async function toggleGm(schedule) {
+    await updateDoc(doc(db, "schedules", schedule.id), { [`gms.${profile.id}`]: !schedule.gms?.[profile.id] });
+    load();
+  }
+
   async function vote(schedule, currentStatus) {
     const next = currentStatus === "yes" ? "no" : "yes";
     await updateDoc(doc(db, "schedules", schedule.id), { [`attendees.${profile.id}`]: next });
@@ -657,13 +663,20 @@ function SchedulesTab({ group, profile, members }) {
                         background: "var(--bg-sub)", color: "var(--text-sub)", whiteSpace: "nowrap",
                       }}>
                         {m ? displayName(m) : "탈퇴한 유저"}
+                        {s.gms?.[uid] && <b style={{ marginLeft: 4, color: "var(--accent)" }}>GM</b>}
                       </span>
                     );
                   })}
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {mine === "yes" && !isNegotiating && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--text-sub)", whiteSpace: "nowrap" }}>
+                <input type="checkbox" checked={!!s.gms?.[profile.id]} onChange={() => toggleGm(s)} />
+                🎭 GM으로 참석
+              </label>
+            )}
             <OutlineButton onClick={() => vote(s, mine)}>
               {mine === "yes" ? (isNegotiating ? "의향 취소" : "참석 취소") : (isNegotiating ? "참여 의향 있어요" : "참석하기")}
             </OutlineButton>
