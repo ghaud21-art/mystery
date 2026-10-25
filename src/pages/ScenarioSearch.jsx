@@ -117,6 +117,7 @@ export default function ScenarioSearch() {
       await addDoc(collection(db, "records"), {
         userId: profile.id,
         scenarioName: s.title,
+        genre: scenarioGenre(s),
         ...payload,
         date: new Date().toISOString().slice(0, 10),
         spoiler: true,

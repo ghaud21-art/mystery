@@ -5,13 +5,13 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../lib/firebase.js";
 import { expandDateRange } from "../lib/dateUtils.js";
 import { syncPlayedTitles } from "../lib/records.js";
-import { normalizeTitle } from "../lib/scenarioUtils.js";
+import { normalizeTitle, scenarioGenre, GENRES } from "../lib/scenarioUtils.js";
 import { canUseAI, KAKAO_CONTACT_URL, matchRecordsToCanonicalTitles } from "../lib/ai.js";
 import { AILimitNotice, Card, EmptyState, OutlineButton, PageHeader, PrimaryButton, ScrollBox } from "../components/ui.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
 import StarRating from "../components/StarRating.jsx";
 
-const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false, role: "player" };
+const EMPTY_FORM = { scenarioName: "", character: "", rating: 0, note: "", spoiler: true, favorite: false, public: false, role: "player", genre: "" };
 const RATING_OPTIONS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 const VIEW_TABS = [
   { key: "list", label: "목록" },
@@ -40,6 +40,7 @@ export default function Records() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("title");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [genreFilter, setGenreFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [attendedByDate, setAttendedByDate] = useState({});
   const [aiCleanupBusy, setAiCleanupBusy] = useState(false);
@@ -115,7 +116,7 @@ export default function Records() {
     setEditingId(r.id);
     setForm({
       scenarioName: r.scenarioName, character: r.character || "", rating: r.rating || 0,
-      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite, public: !!r.public, role: r.role === "gm" ? "gm" : "player",
+      note: r.note || "", spoiler: r.spoiler !== false, favorite: !!r.favorite, public: !!r.public, role: r.role === "gm" ? "gm" : "player", genre: r.genre || "",
     });
     setShowForm(true);
   }
@@ -123,7 +124,7 @@ export default function Records() {
   async function submitForm(e) {
     e.preventDefault();
     const rating = Number(form.rating);
-    const payload = { ...form, rating: rating > 0 ? rating : null };
+    const payload = { ...form, rating: rating > 0 ? rating : null, genre: form.genre || null };
     if (editingId) {
       await updateDoc(doc(db, "records", editingId), payload);
     } else {
@@ -217,6 +218,7 @@ export default function Records() {
             favorite: !!original?.favorite,
             public: !!original?.public,
             role: original?.role === "gm" ? "gm" : "player",
+            genre: original?.genre || null,
             createdAt: serverTimestamp(),
           });
         }
@@ -233,10 +235,19 @@ export default function Records() {
     load();
   }
 
+  // 기록 자체에 장르가 저장돼 있으면 그걸, 없으면 시나리오 DB에서 같은 제목을 찾아 그 장르를, 그것도
+  // 없으면 머더미스터리로 침. 크라임씬은 따로, 머더미스터리·스크립트킬은 한 묶음으로 셈.
+  const genreByTitle = useMemo(
+    () => new Map(scenarios.map((s) => [normalizeTitle(s.title), scenarioGenre(s)])),
+    [scenarios]
+  );
+  const isCrimeScene = (r) => (r.genre || genreByTitle.get(normalizeTitle(r.scenarioName)) || GENRES[0]) === "크라임씬";
+
   const sortedRecords = useMemo(() => {
     if (!records) return [];
     const q = search.trim().toLowerCase();
-    const byRole = roleFilter === "all" ? records : records.filter((r) => (r.role === "gm") === (roleFilter === "gm"));
+    const byGenre = genreFilter === "all" ? records : records.filter((r) => isCrimeScene(r) === (genreFilter === "crime"));
+    const byRole = roleFilter === "all" ? byGenre : byGenre.filter((r) => (r.role === "gm") === (roleFilter === "gm"));
     const filtered = q
       ? byRole.filter((r) =>
           r.scenarioName.toLowerCase().includes(q) ||
@@ -252,9 +263,15 @@ export default function Records() {
       byTitle(a, b);
     const sorter = sortBy === "newest" ? (a, b) => byDate(b, a) : sortBy === "oldest" ? byDate : byTitle;
     return [...filtered].sort(sorter);
-  }, [records, search, sortBy, roleFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, search, sortBy, roleFilter, genreFilter, genreByTitle]);
 
   const gmCount = useMemo(() => (records || []).filter((r) => r.role === "gm").length, [records]);
+  const crimeCount = useMemo(
+    () => (records || []).filter(isCrimeScene).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records, genreByTitle]
+  );
 
   const recordsByDate = useMemo(() => {
     const map = {};
@@ -276,6 +293,10 @@ export default function Records() {
         <div style={{ fontSize: 12.5, color: "var(--text-sub)", marginTop: -16, marginBottom: 16 }}>
           지금까지 <span style={{ color: "var(--accent)", fontWeight: 700 }}>{records.length}건</span> 기록
           {gmCount > 0 && ` (플레이어 ${records.length - gmCount}건 · GM ${gmCount}건)`}
+          <div style={{ marginTop: 3 }}>
+            크라임씬 <b style={{ color: "var(--accent)" }}>{crimeCount}건</b> · 머더미스터리/스크립트킬{" "}
+            <b style={{ color: "var(--accent)" }}>{records.length - crimeCount}건</b>
+          </div>
         </div>
       )}
 
@@ -399,6 +420,13 @@ export default function Records() {
               역할/캐릭터를 스포일러로 블러 처리
             </label>
             <label style={{ fontSize: 12.5, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 8 }}>
+              장르
+              <select value={form.genre} onChange={(e) => setForm({ ...form, genre: e.target.value })} style={{ ...inputStyle, width: 190 }}>
+                <option value="">자동 (작품 DB 기준, 없으면 머더미스터리)</option>
+                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </label>
+            <label style={{ fontSize: 12.5, color: "var(--text-sub)", display: "flex", alignItems: "center", gap: 8 }}>
               <input type="checkbox" checked={form.role === "gm"} onChange={(e) => setForm({ ...form, role: e.target.checked ? "gm" : "player" })} />
               🎭 GM(진행자)으로 참여했어요 — 별점은 작품 평균에 반영되지 않아요
             </label>
@@ -435,6 +463,24 @@ export default function Records() {
                   border: `1.5px solid ${sortBy === o.key ? "var(--accent)" : "var(--border)"}`,
                   background: sortBy === o.key ? "var(--accent-dim)" : "transparent",
                   color: sortBy === o.key ? "var(--accent)" : "var(--text-sub)",
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11.5, color: "var(--text-sub)", flex: "none" }}>장르</span>
+            {[{ key: "all", label: "전체" }, { key: "crime", label: "크라임씬" }, { key: "mystery", label: "머더미스터리/스크립트킬" }].map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => setGenreFilter(o.key)}
+                style={{
+                  height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                  border: `1.5px solid ${genreFilter === o.key ? "var(--accent)" : "var(--border)"}`,
+                  background: genreFilter === o.key ? "var(--accent-dim)" : "transparent",
+                  color: genreFilter === o.key ? "var(--accent)" : "var(--text-sub)",
                 }}
               >
                 {o.label}

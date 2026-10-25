@@ -35,7 +35,7 @@ export const syncAttendedRecords = onSchedule(
       return map;
     }
 
-    async function createRecordIfMissing(uid, title, date, asGm) {
+    async function createRecordIfMissing(uid, title, date, asGm, genre) {
       const key = normalizeTitle(title);
       const existing = await loadExisting(uid);
       const found = existing.get(key);
@@ -58,6 +58,7 @@ export const syncAttendedRecords = onSchedule(
         spoiler: true,
         favorite: false,
         role: asGm ? "gm" : "player",
+        genre: genre || null,
         date,
         source: "auto-schedule",
         createdAt: FieldValue.serverTimestamp(),
@@ -81,7 +82,7 @@ export const syncAttendedRecords = onSchedule(
       const date = s.datetime.slice(0, 10);
       const attendeeIds = Object.entries(s.attendees || {}).filter(([, v]) => v === "yes").map(([uid]) => uid);
       for (const uid of attendeeIds) {
-        if (await createRecordIfMissing(uid, s.title, date, !!s.gms?.[uid])) created++;
+        if (await createRecordIfMissing(uid, s.title, date, !!s.gms?.[uid], s.category)) created++;
       }
       await doc.ref.update({ recordSynced: true });
     }
@@ -89,7 +90,7 @@ export const syncAttendedRecords = onSchedule(
     const personalSnap = await db.collection("personalSchedules").where("category", "in", RECORD_CATEGORIES).get();
     for (const doc of personalSnap.docs.filter((d) => isDue(d.data()))) {
       const s = doc.data();
-      if (await createRecordIfMissing(s.userId, s.title, s.datetime.slice(0, 10), !!s.asGm)) created++;
+      if (await createRecordIfMissing(s.userId, s.title, s.datetime.slice(0, 10), !!s.asGm, s.category)) created++;
       await doc.ref.update({ recordSynced: true });
     }
 
