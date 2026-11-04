@@ -24,9 +24,22 @@ export async function enableReminderNotifications(uid) {
   if (!("Notification" in window) || !("serviceWorker" in navigator)) {
     throw new Error("이 브라우저는 알림을 지원하지 않아요.");
   }
+  // 한 번 "차단"되면(또는 휴대폰을 초기화하면서 앱/Chrome 알림이 꺼진 채면) 브라우저는 허용창을 다시
+  // 띄우지 않고 바로 denied를 돌려줌 — 그래서 앱에서는 아무 창도 안 뜨고 실패처럼 보임. 직접 설정에서
+  // 풀어야 한다는 걸 알려줘야 함.
+  if (Notification.permission === "denied") {
+    throw new Error(
+      "알림이 차단돼 있어서 허용창이 안 떠요. 휴대폰 설정 > 앱 > 머더미스터리(설치한 앱) 또는 Chrome > 알림을 켜고, " +
+        "Chrome 주소창 왼쪽 자물쇠(또는 ⋮ > 설정 > 사이트 설정 > 알림)에서 이 사이트의 알림을 '허용'으로 바꿔주세요. " +
+        "그다음 앱을 완전히 닫았다가 다시 열어서 눌러주세요."
+    );
+  }
   const permission = await Notification.requestPermission();
+  if (permission === "default") {
+    throw new Error("알림 허용창을 닫았거나 선택하지 않았어요. 다시 눌러서 '허용'을 선택해주세요.");
+  }
   if (permission !== "granted") {
-    throw new Error("알림 권한이 허용되지 않았어요.");
+    throw new Error("알림 권한이 허용되지 않았어요. 휴대폰 설정 > 앱 > 알림에서 허용해주세요.");
   }
 
   const messaging = await getMessagingIfSupported();
