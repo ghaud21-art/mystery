@@ -35,6 +35,7 @@ export default function Agenda() {
   const [calendarSyncStatus, setCalendarSyncStatus] = useState("");
   const [personalCategoryFilter, setPersonalCategoryFilter] = useState("all");
   const [upcomingCategoryFilter, setUpcomingCategoryFilter] = useState("all");
+  const [agendaSearch, setAgendaSearch] = useState("");
   const [scenarios, setScenarios] = useState([]);
   const [showTitleSuggestions, setShowTitleSuggestions] = useState(false);
 
@@ -343,10 +344,14 @@ export default function Agenda() {
       });
   }, [items, personalSchedules, profile.id]);
 
+  // sortedAgendaItems는 이미 "내가 참석하는 모임 일정 + 내 개인 일정"만 담고 있어서, 여기서 이름으로
+  // 검색하면 자연스럽게 내가 참여하는 일정 안에서만 찾게 됨.
   const displayAgendaItems = useMemo(() => {
-    if (upcomingCategoryFilter === "all") return sortedAgendaItems;
-    return sortedAgendaItems.filter((s) => (s.category || "머더미스터리") === upcomingCategoryFilter);
-  }, [sortedAgendaItems, upcomingCategoryFilter]);
+    const q = agendaSearch.trim().toLowerCase();
+    return sortedAgendaItems
+      .filter((s) => upcomingCategoryFilter === "all" || (s.category || "머더미스터리") === upcomingCategoryFilter)
+      .filter((s) => !q || (s.title || "").toLowerCase().includes(q));
+  }, [sortedAgendaItems, upcomingCategoryFilter, agendaSearch]);
 
   const upcomingPersonal = useMemo(() => {
     const now = new Date().toISOString();
@@ -433,6 +438,14 @@ export default function Agenda() {
         <Card style={{ position: "sticky", top: 20, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>다가오는 일정</div>
           {items && sortedAgendaItems.length > 0 && (
+            <input
+              placeholder="일정 이름으로 검색 (내가 참여하는 일정만)"
+              value={agendaSearch}
+              onChange={(e) => setAgendaSearch(e.target.value)}
+              style={inputStyle}
+            />
+          )}
+          {items && sortedAgendaItems.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {ALL_CATEGORIES.map((c) => (
                 <button
@@ -455,9 +468,13 @@ export default function Agenda() {
             <span style={{ fontSize: 13, color: "var(--text-sub)" }}>불러오는 중…</span>
           ) : displayAgendaItems.length === 0 ? (
             <EmptyState>
-              예정된 일정이 없어요.
-              <br />
-              <Link to="/schedule" style={{ textDecoration: "underline" }}>모임에서 일정 만들러 가기 →</Link>
+              {agendaSearch.trim() ? "검색 결과가 없어요." : (
+                <>
+                  예정된 일정이 없어요.
+                  <br />
+                  <Link to="/schedule" style={{ textDecoration: "underline" }}>모임에서 일정 만들러 가기 →</Link>
+                </>
+              )}
             </EmptyState>
           ) : (
             <ScrollBox maxHeight="clamp(280px, calc(100vh - 460px), 520px)">
