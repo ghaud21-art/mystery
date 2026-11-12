@@ -411,6 +411,8 @@ function SchedulesTab({ group, profile, members }) {
   const [scenarios, setScenarios] = useState([]);
   const [showTitleSuggestions, setShowTitleSuggestions] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [scheduleSearch, setScheduleSearch] = useState("");
+  const [mineOnly, setMineOnly] = useState(false);
 
   async function load() {
     try {
@@ -494,10 +496,13 @@ function SchedulesTab({ group, profile, members }) {
   // 일정 목록에서는 제외함.
   const displayItems = useMemo(() => {
     if (!sortedItems) return sortedItems;
-    const confirmedOnly = sortedItems.filter((s) => (s.status || "confirmed") !== "negotiating");
-    if (categoryFilter === "all") return confirmedOnly;
-    return confirmedOnly.filter((s) => (s.category || "머더미스터리") === categoryFilter);
-  }, [sortedItems, categoryFilter]);
+    const q = scheduleSearch.trim().toLowerCase();
+    return sortedItems
+      .filter((s) => (s.status || "confirmed") !== "negotiating")
+      .filter((s) => categoryFilter === "all" || (s.category || "머더미스터리") === categoryFilter)
+      .filter((s) => !mineOnly || s.attendees?.[profile.id] === "yes")
+      .filter((s) => !q || (s.title || "").toLowerCase().includes(q));
+  }, [sortedItems, categoryFilter, scheduleSearch, mineOnly, profile.id]);
 
   const [selectedDate, setSelectedDate] = useState(null);
   const eventsByDate = useMemo(() => {
@@ -784,6 +789,21 @@ function SchedulesTab({ group, profile, members }) {
           )}
 
           {items && items.length > 0 && (
+            <>
+              <input
+                placeholder="일정 이름으로 검색"
+                value={scheduleSearch}
+                onChange={(e) => setScheduleSearch(e.target.value)}
+                style={inputStyle}
+              />
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-sub)" }}>
+                <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
+                내가 참석하는 일정만 보기
+              </label>
+            </>
+          )}
+
+          {items && items.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {["all", ...CATEGORIES].map((c) => (
                 <button
@@ -808,7 +828,9 @@ function SchedulesTab({ group, profile, members }) {
           ) : items.length === 0 ? (
             <EmptyState>아직 등록된 일정이 없어요.</EmptyState>
           ) : displayItems.length === 0 ? (
-            <EmptyState>이 카테고리에는 확정된 일정이 없어요.</EmptyState>
+            <EmptyState>
+              {scheduleSearch.trim() || mineOnly ? "조건에 맞는 일정이 없어요." : "이 카테고리에는 확정된 일정이 없어요."}
+            </EmptyState>
           ) : (
           <ScrollBox maxHeight="clamp(320px, calc(100vh - 340px), 720px)">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
