@@ -273,6 +273,66 @@ export default function Records() {
     [records, genreByTitle]
   );
 
+  // 내보내기용 행: 전체 기록을 최신 날짜순으로(필터/검색과 무관하게 전부).
+  function buildExportRows() {
+    const sorted = [...(records || [])].sort(
+      (a, b) => (b.date || "").localeCompare(a.date || "") || a.scenarioName.localeCompare(b.scenarioName, "ko")
+    );
+    return sorted.map((r) => ({
+      날짜: r.date || "",
+      작품명: r.scenarioName || "",
+      장르: r.genre || genreByTitle.get(normalizeTitle(r.scenarioName)) || GENRES[0],
+      역할: r.role === "gm" ? "GM" : "플레이어",
+      캐릭터: r.character || "",
+      별점: r.rating || "",
+      인생머미: r.favorite ? "★" : "",
+      후기: r.note || "",
+    }));
+  }
+
+  async function exportExcel() {
+    const rows = buildExportRows();
+    if (rows.length === 0) return;
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 6 }, { wch: 8 }, { wch: 50 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "플레이 기록");
+    XLSX.writeFile(wb, `머더미스터리_플레이기록_${todayKey()}.xlsx`);
+  }
+
+  // PDF는 별도 라이브러리(한글 폰트 임베딩 문제) 없이, 표만 담은 인쇄용 문서를 띄워서 브라우저의
+  // "PDF로 저장"으로 만들게 함 — 한글이 깨지지 않고 어떤 기기에서도 같은 방식으로 동작.
+  function exportPdf() {
+    const rows = buildExportRows();
+    if (rows.length === 0) return;
+    const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const headers = Object.keys(rows[0]);
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>머더미스터리 플레이 기록</title>
+<style>
+  body{font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:11px;color:#111;margin:16px}
+  h1{font-size:16px;margin:0 0 4px} p{margin:0 0 10px;color:#555}
+  table{border-collapse:collapse;width:100%} th,td{border:1px solid #bbb;padding:4px 6px;vertical-align:top;text-align:left}
+  th{background:#eee} tr{page-break-inside:avoid}
+</style></head><body>
+<h1>머더미스터리 플레이 기록</h1>
+<p>총 ${rows.length}건 · ${esc(todayKey())} 기준</p>
+<table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+<tbody>${rows.map((r) => `<tr>${headers.map((h) => `<td>${esc(r[h])}</td>`).join("")}</tr>`).join("")}</tbody></table>
+</body></html>`;
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => iframe.remove(), 1000);
+    }, 300);
+  }
+
   const recordsByDate = useMemo(() => {
     const map = {};
     (records || []).forEach((r) => { (map[r.date] = map[r.date] || []).push(r); });
@@ -296,6 +356,10 @@ export default function Records() {
           <div style={{ marginTop: 3 }}>
             크라임씬 <b style={{ color: "var(--accent)" }}>{crimeCount}건</b> · 머더미스터리/스크립트킬{" "}
             <b style={{ color: "var(--accent)" }}>{records.length - crimeCount}건</b>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} onClick={exportExcel}>📥 엑셀로 저장</OutlineButton>
+            <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} onClick={exportPdf}>📄 PDF로 저장</OutlineButton>
           </div>
         </div>
       )}
