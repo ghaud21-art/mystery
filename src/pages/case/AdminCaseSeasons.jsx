@@ -88,6 +88,7 @@ export default function AdminCaseSeasons() {
         title="사건 콘텐츠 관리"
         action={
           <div style={{ display: "flex", gap: 8 }}>
+            <Link to="/admin/case-games"><OutlineButton>놓친 장면 관리</OutlineButton></Link>
             <OutlineButton onClick={() => setShowImport((v) => !v)}>{showImport ? "닫기" : "JSON 가져오기"}</OutlineButton>
             <PrimaryButton onClick={() => setShowCreate((v) => !v)}>{showCreate ? "닫기" : "+ 새 시즌"}</PrimaryButton>
           </div>

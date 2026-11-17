@@ -121,5 +121,17 @@ service cloud.firestore {
     match /caseResults/{docId} {
       allow read, write: if false;
     }
+
+    // 놓친 장면 등 사건 탭 게임: 공개 정보(caseGames)도 목록/랜딩에 필요한 건 전부 Functions가 내려주고,
+    // 정답이 담긴 시나리오(caseGameContent)와 진행 상태(caseRuns)는 클라이언트 직접 접근을 전면 차단한다.
+    match /caseGames/{id} {
+      allow read, write: if false;
+    }
+    match /caseGameContent/{id} {
+      allow read, write: if false;
+    }
+    match /caseRuns/{id} {
+      allow read, write: if false;
+    }
   }
 }

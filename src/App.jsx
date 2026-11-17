@@ -24,6 +24,8 @@ import CaseResult from "./pages/case/CaseResult.jsx";
 import AdminCaseSeasons from "./pages/case/AdminCaseSeasons.jsx";
 import AdminCaseSeasonEdit from "./pages/case/AdminCaseSeasonEdit.jsx";
 import AdminCaseStats from "./pages/case/AdminCaseStats.jsx";
+import MissedGame from "./pages/case/MissedGame.jsx";
+import AdminCaseGames from "./pages/case/AdminCaseGames.jsx";
 
 export default function App() {
   return (
@@ -46,12 +48,14 @@ export default function App() {
             <Route path="/records" element={<Records />} />
             <Route path="/scenarios" element={<ScenarioSearch />} />
             <Route path="/case" element={<CaseHub />} />
+            <Route path="/case/game/:gameId" element={<MissedGame />} />
             <Route path="/case/:seasonId/play" element={<CasePlay />} />
             <Route path="/case/:seasonId/result" element={<CaseResult />} />
             <Route path="/profile" element={<Profile />} />
             <Route element={<AdminRoute />}>
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/case" element={<AdminCaseSeasons />} />
+              <Route path="/admin/case-games" element={<AdminCaseGames />} />
               <Route path="/admin/case/:seasonId" element={<AdminCaseSeasonEdit />} />
               <Route path="/admin/case/:seasonId/stats" element={<AdminCaseStats />} />
             </Route>

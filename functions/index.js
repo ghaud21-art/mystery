@@ -125,3 +125,7 @@ export * from "./scenarioAutoRequest.js";
 
 // 끝난 일정을 참석자 플레이 기록으로 자동 연동 (예전 GitHub Actions 크론을 대체).
 export * from "./syncAttendedRecords.js";
+
+// 사건 탭의 게임 종류(편지/놓친 장면/탐문 수사) 공통 목록 + 놓친 장면 플레이·관리.
+export * from "./case/games.js";
+export * from "./case/missed.js";

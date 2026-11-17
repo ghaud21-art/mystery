@@ -225,7 +225,7 @@ export default function Admin() {
       <Card style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>사건이 도착했습니다</div>
-          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>시즌·일차 콘텐츠 편집, 시딩, 현황 대시보드</div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>편지 게임 시즌 편집·시딩·현황, 놓친 장면 게임 가져오기·영상 업로드</div>
         </div>
         <Link to="/admin/case"><OutlineButton>사건 콘텐츠 관리</OutlineButton></Link>
       </Card>

@@ -1,0 +1,18 @@
+name: Deploy Storage Rules
+
+# Storage 규칙만 따로 배포 — 기본 버킷이 아직 없으면 실패하므로, 일반 배포(hosting/functions)와 분리함.
+on:
+  push:
+    branches: [main]
+    paths: ["storage.rules"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx firebase-tools deploy --only storage --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --token "${{ secrets.FIREBASE_TOKEN }}"

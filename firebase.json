@@ -1,8 +1,17 @@
 {
   "hosting": {
     "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   },
   "firestore": {
     "rules": "firestore.rules",
@@ -14,5 +23,8 @@
       "codebase": "default",
       "runtime": "nodejs22"
     }
-  ]
+  ],
+  "storage": {
+    "rules": "storage.rules"
+  }
 }

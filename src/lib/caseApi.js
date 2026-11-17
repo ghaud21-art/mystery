@@ -36,3 +36,17 @@ export const caseAdminImportSeason = call("caseAdminImportSeason");
 export const caseAdminDeleteSeason = call("caseAdminDeleteSeason");
 export const caseAdminGetStats = call("caseAdminGetStats");
 export const caseAdminResetMyProgress = call("caseAdminResetMyProgress");
+
+// ---- 사건 탭 게임 종류(놓친 장면 등)
+export const caseGamesList = call("caseGamesList");
+export const missedGetPublic = call("missedGetPublic");
+export const missedPlay = call("missedPlay");
+
+export const caseGameAdminList = call("caseGameAdminList");
+export const caseGameAdminGet = call("caseGameAdminGet");
+export const caseGameAdminImport = call("caseGameAdminImport");
+export const caseGameAdminSetMedia = call("caseGameAdminSetMedia");
+export const caseGameAdminPublish = call("caseGameAdminPublish");
+export const caseGameAdminDelete = call("caseGameAdminDelete");
+export const caseGameAdminResetMyRun = call("caseGameAdminResetMyRun");
+export const caseGameAdminStats = call("caseGameAdminStats");
