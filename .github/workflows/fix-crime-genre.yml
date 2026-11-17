@@ -1,0 +1,22 @@
+name: Fix Crime Genre (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "true면 실제로 장르를 바꿈, 아니면 드라이런"
+        default: "false"
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install firebase-admin
+      - run: node scripts/fix-crime-genre.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          APPLY: ${{ inputs.apply == 'true' && '1' || '0' }}
