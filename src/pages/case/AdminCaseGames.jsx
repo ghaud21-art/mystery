@@ -184,6 +184,7 @@ export default function AdminCaseGames() {
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Link to={`/case/game/${g.gameId}`}><OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>플레이해보기</OutlineButton></Link>
+                  <Link to={`/admin/case-games/${g.gameId}/edit`}><OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }}>플레이형 편집</OutlineButton></Link>
                   <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} onClick={() => resetMine(g.gameId)}>내 진행 초기화</OutlineButton>
                   <OutlineButton style={{ height: 32, padding: "0 12px", fontSize: 12 }} onClick={() => (openId === g.gameId ? setOpenId(null) : openGame(g.gameId))}>
                     {openId === g.gameId ? "관리 닫기" : "영상·현황"}
