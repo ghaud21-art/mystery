@@ -46,7 +46,6 @@ export const caseGameAdminList = call("caseGameAdminList");
 export const caseGameAdminGet = call("caseGameAdminGet");
 export const caseGameAdminImport = call("caseGameAdminImport");
 export const caseGameAdminSetMedia = call("caseGameAdminSetMedia");
-export const caseGameAdminPatch = call("caseGameAdminPatch");
 export const caseGameAdminPublish = call("caseGameAdminPublish");
 export const caseGameAdminDelete = call("caseGameAdminDelete");
 export const caseGameAdminResetMyRun = call("caseGameAdminResetMyRun");
