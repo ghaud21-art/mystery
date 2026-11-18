@@ -180,9 +180,13 @@ function LocationView({ view, act, busy, setFeedback, feedback }) {
             const c = cands[0];
             return c ? <span key={c.k} style={dot(c.r, { width: 30, height: 30, border: "2px solid var(--accent)", background: "rgba(20,16,8,.5)", color: "var(--accent)", fontSize: 15 })}>?</span> : null;
           })()}
-          {L.foundRects.flatMap((f) => f.rects.filter((r) => rectActive(r, curT)).map((r, i) => (
-            <span key={`${f.id}_${i}`} style={dot(r, { width: 24, height: 24, background: "var(--accent)", color: "var(--bg)", fontSize: 13 })}>✓</span>
-          )))}
+          {(() => {
+            // 찾은 표시(✓)도 한 번에 하나만: 지금 시각과 가장 가까운 것
+            const cands = L.foundRects.flatMap((f) => f.rects.filter((r) => rectActive(r, curT)).map((r, i) => ({ k: `${f.id}_${i}`, r })));
+            cands.sort((x, y) => Math.abs(curT - (x.r.t ?? curT)) - Math.abs(curT - (y.r.t ?? curT)));
+            const c = cands[0];
+            return c ? <span key={c.k} style={dot(c.r, { width: 24, height: 24, background: "var(--accent)", color: "var(--bg)", fontSize: 13 })}>✓</span> : null;
+          })()}
           {placedMode && (
             <div onClick={busy ? undefined : onOverlay} style={{ position: "absolute", inset: 0, cursor: L.left > 0 ? "crosshair" : "default", borderRadius: 10 }} />
           )}
