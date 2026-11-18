@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { storage } from "../../lib/firebase.js";
+import { uploadGameMedia } from "../../lib/gameMedia.js";
 import {
-  caseGameAdminList, caseGameAdminGet, caseGameAdminImport, caseGameAdminSetMedia, caseGameAdminPublish,
+  caseGameAdminList, caseGameAdminGet, caseGameAdminImport, caseGameAdminPublish,
   caseGameAdminDelete, caseGameAdminResetMyRun, caseGameAdminStats,
 } from "../../lib/caseApi.js";
 import { Card, EmptyState, OutlineButton, PageHeader, PrimaryButton } from "../../components/ui.jsx";
@@ -122,24 +121,18 @@ export default function AdminCaseGames() {
   // 파일명이 시나리오가 참조하는 이름과 같은 파일만 올려서 자동으로 연결함.
   async function uploadFiles(files) {
     const wanted = collectMediaNames(detail.scenario);
-    const done = {};
     for (const file of files) {
       if (!wanted.has(file.name)) { setUploadLog((l) => ({ ...l, [file.name]: "시나리오가 쓰지 않는 파일명이라 건너뜀" })); continue; }
       setUploadLog((l) => ({ ...l, [file.name]: "올리는 중…" }));
       try {
-        const r = ref(storage, `case-games/${openId}/${file.name}`);
-        await uploadBytes(r, file, file.type ? { contentType: file.type } : undefined);
-        done[file.name] = await getDownloadURL(r);
+        const url = await uploadGameMedia(openId, file.name, file);
+        setDetail((d) => ({ ...d, mediaUrls: { ...d.mediaUrls, [file.name]: url } }));
         setUploadLog((l) => ({ ...l, [file.name]: "완료" }));
       } catch (err) {
         setUploadLog((l) => ({ ...l, [file.name]: `실패: ${err.code || err.message}` }));
       }
     }
-    if (Object.keys(done).length) {
-      await caseGameAdminSetMedia({ gameId: openId, mediaUrls: done });
-      setDetail((d) => ({ ...d, mediaUrls: { ...d.mediaUrls, ...done } }));
-      await load();
-    }
+    await load();
   }
 
   const names = detail ? [...collectMediaNames(detail.scenario)].sort() : [];

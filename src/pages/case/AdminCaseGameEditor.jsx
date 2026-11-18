@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { storage } from "../../lib/firebase.js";
-import { caseGameAdminGet, caseGameAdminImport, caseGameAdminSetMedia } from "../../lib/caseApi.js";
+import { uploadGameMedia } from "../../lib/gameMedia.js";
+import { caseGameAdminGet, caseGameAdminImport } from "../../lib/caseApi.js";
 import { Card, OutlineButton, PageHeader, PrimaryButton } from "../../components/ui.jsx";
 
 const DEFAULT_TW = 1.5;
@@ -97,6 +96,8 @@ export default function AdminCaseGameEditor() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("play");
   const [step, setStep] = useState("start");
+  const [upLog, setUpLog] = useState({});
+  const [prevOpen, setPrevOpen] = useState({});
 
   useEffect(() => {
     caseGameAdminGet({ gameId }).then((g) => {
@@ -129,6 +130,18 @@ export default function AdminCaseGameEditor() {
     }
   }
 
+  // 파일 하나를 시나리오가 쓰는 이름으로 올려서 바로 연결(저장 버튼과 무관하게 즉시 반영)
+  async function uploadMedia(name, file) {
+    setUpLog((l) => ({ ...l, [name]: "올리는 중…" }));
+    try {
+      const url = await uploadGameMedia(gameId, name, file);
+      setGame((g) => ({ ...g, mediaUrls: { ...g.mediaUrls, [name]: url } }));
+      setUpLog((l) => ({ ...l, [name]: "완료" }));
+    } catch (err) {
+      setUpLog((l) => ({ ...l, [name]: `실패: ${err.code || err.message}` }));
+    }
+  }
+
   if (error && !sc) return <div style={{ color: "var(--danger)", fontSize: 13 }}>{error}</div>;
   if (!sc) return <span style={{ color: "var(--text-sub)", fontSize: 13 }}>불러오는 중…</span>;
 
@@ -142,6 +155,32 @@ export default function AdminCaseGameEditor() {
         {o.rows ? <textarea rows={o.rows} {...common} /> : <input {...common} />}
         {o.hint && <span style={{ fontSize: 11, color: "var(--text-sub)", opacity: 0.8 }}>{o.hint}</span>}
       </label>
+    );
+  };
+  const mediaKind = (n) => (/\.(mp4|webm|mov)$/i.test(n) ? "video" : /\.(mp3|wav|m4a|ogg)$/i.test(n) ? "audio" : "image");
+  const M = (label, path) => {
+    const name = get(sc, path);
+    if (!name || /^https?:\/\//.test(name)) return null;
+    const url = game.mediaUrls?.[name];
+    const open = !!prevOpen[name];
+    return (
+      <div key={"m:" + path.join(".")} style={{ border: `1px dashed ${url ? "var(--border)" : "var(--danger)"}`, borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ fontSize: 12.5 }}><strong>{label}</strong><span style={{ color: "var(--text-sub)", marginLeft: 8, fontSize: 11.5 }}>{name}</span></div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 11.5, color: url && !String(upLog[name] ?? "").startsWith("실패") ? "var(--text-sub)" : "var(--danger)" }}>{upLog[name] || (url ? "연결됨" : "아직 없음")}</span>
+            {url && <button type="button" onClick={() => setPrevOpen((p) => ({ ...p, [name]: !p[name] }))} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}>{open ? "닫기" : "미리보기"}</button>}
+            <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent)", cursor: "pointer", border: "1px solid var(--accent)", borderRadius: 6, padding: "3px 10px" }}>
+              {url ? "교체" : "파일 올리기"}
+              <input type="file" accept="video/*,image/*,audio/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) uploadMedia(name, f); }} />
+            </label>
+          </div>
+        </div>
+        {url && open && (mediaKind(name) === "video"
+          ? <video src={url} controls preload="metadata" style={{ width: "100%", maxWidth: 420, borderRadius: 8, background: "#000" }} />
+          : mediaKind(name) === "audio" ? <audio src={url} controls />
+            : <img src={url} alt="" style={{ width: "100%", maxWidth: 420, borderRadius: 8 }} />)}
+      </div>
     );
   };
   const List = (label, path, o = {}) => {
@@ -186,6 +225,7 @@ export default function AdminCaseGameEditor() {
           {T("시리즈", ["meta", "series"])}
           {T("제목", ["meta", "title"], { big: true })}
           {T("소개(목록 카드에 보이는 한 줄)", ["meta", "subtitle"], { rows: 3, optional: true })}
+          {M("대표 이미지(썸네일)", ["meta", "thumbnail"])}
           {T("시작 전 콘텐츠 안내 문구(동의 체크박스 위에 보여요)", ["notice"], { rows: 4 })}
           {Box("처음에 선택하는 난이도 문장", Object.keys(sc.levels).map((k) => Box(`${LEVEL_KO[k] ?? k}`, (
             <>
@@ -199,6 +239,7 @@ export default function AdminCaseGameEditor() {
               {T("작은 머리글", ["briefing", "kicker"])}
               {T("브리핑 제목", ["briefing", "title"])}
               {List("브리핑 문단", ["briefing", "lines"], { rows: 3 })}
+              {M("브리핑 영상", ["briefing", "video"])}
             </>
           ))}
           {Box("조사 규칙 문장", List("규칙", ["rules"], { rows: 2 }))}
@@ -221,6 +262,7 @@ export default function AdminCaseGameEditor() {
         <>
           {T("장소 이름", ["locations", li, "name"], { big: true })}
           {T("지도에서 보이는 설명", ["locations", li, "blurb"], { rows: 2 })}
+          {M("장소 영상", ["locations", li, "video"])}
           {loc.unlock && !loc.unlock.start && T("잠겨 있을 때 보이는 문장", ["locations", li, "lockedHint"], { rows: 2, optional: true })}
           {ch && Box(`인물 · ${ch.name}`, (
             <>
@@ -229,6 +271,8 @@ export default function AdminCaseGameEditor() {
               {T("첫 번째 진술", ["characters", ci, "statement1", "text"], { rows: 3 })}
               {T("두 번째 진술(단서를 내밀면 열려요)", ["characters", ci, "statement2", "text"], { rows: 5 })}
               {T("틀린 단서를 내밀었을 때", ["characters", ci, "wrongReply"], { rows: 2 })}
+              {M("첫 번째 진술 영상", ["characters", ci, "statement1", "video"])}
+              {M("두 번째 진술 영상", ["characters", ci, "statement2", "video"])}
             </>
           ))}
           {(loc.clues ?? []).map((c, j) => Box(`단서 ${c.id} · ${DIFF[c.difficulty] ?? c.difficulty}${c.kind === "image" ? " · 이미지" : ""}`, (
@@ -237,6 +281,7 @@ export default function AdminCaseGameEditor() {
               {T("문구", ["locations", li, "clues", j, "text"], { rows: 3 })}
               {c.textNoSkew != null && T("입문 난이도용 문구", ["locations", li, "clues", j, "textNoSkew"], { rows: 3, optional: true })}
               {c.hotspot && T("영상 속 물건 이름(돋보기 힌트)", ["locations", li, "clues", j, "hotspot", "label"])}
+              {M("단서 이미지", ["locations", li, "clues", j, "image"])}
             </>
           ), c.id))}
           {(loc.decoyHotspots ?? []).map((d, j) => Box(`혼란 지점 ${d.id ?? j + 1}`, (
@@ -262,9 +307,12 @@ export default function AdminCaseGameEditor() {
           {T("제목 줄", ["decisions", i, "label"])}
           {d.call && T("전화 · 거는 사람", ["decisions", i, "call", "who"])}
           {d.call && T("전화 · 대사", ["decisions", i, "call", "text"], { rows: 3 })}
+          {d.call && M("전화 음성", ["decisions", i, "call", "audio"])}
+          {d.call && M("전화 이미지", ["decisions", i, "call", "image"])}
           {T("상황 설명", ["decisions", i, "situation"], { rows: 3 })}
           {d.situationIfNotVisited != null && T("상황 설명(장소에 안 갔을 때)", ["decisions", i, "situationIfNotVisited"], { rows: 3 })}
           {d.callIfNotVisited && T("전화 대사(장소에 안 갔을 때)", ["decisions", i, "callIfNotVisited", "text"], { rows: 3 })}
+          {d.callIfNotVisited && M("전화 음성(장소에 안 갔을 때)", ["decisions", i, "callIfNotVisited", "audio"])}
           {d.options.map((o, k) => Box(`선택지 ${o.id}`, (
             <>
               {T("선택 문장", ["decisions", i, "options", k, "label"])}
@@ -309,6 +357,7 @@ export default function AdminCaseGameEditor() {
           {T("결말 문장", ["endings", i, "text"], { rows: 5 })}
           {T("얻은 것", ["endings", i, "gain"])}
           {T("잃은 것", ["endings", i, "loss"])}
+          {M("결말 영상", ["endings", i, "video"])}
         </>
       ), e.id));
     }
@@ -320,6 +369,7 @@ export default function AdminCaseGameEditor() {
           {T("작은 머리글", ["hiddenStory", "kicker"])}
           {T("제목", ["hiddenStory", "title"], { big: true })}
           {T("도입 문장", ["hiddenStory", "intro"], { rows: 3 })}
+          {M("숨겨진 이야기 영상", ["hiddenStory", "video"])}
           {(h.chapters ?? []).map((c, i) => Box(`장 ${i + 1}`, (
             <>
               {T("머리글", ["hiddenStory", "chapters", i, "kicker"])}
@@ -394,38 +444,24 @@ export default function AdminCaseGameEditor() {
         </>
       )}
 
-      {tab === "media" && <MediaTab gameId={gameId} sc={sc} game={game} setGame={setGame} />}
+      {tab === "media" && <MediaTab sc={sc} game={game} log={upLog} upload={uploadMedia} />}
       {tab === "spots" && <SpotsTab sc={sc} game={game} update={update} />}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- 미디어 한눈에 보기
-function MediaTab({ gameId, sc, game, setGame }) {
+function MediaTab({ sc, game, log, upload }) {
   const list = useMemo(() => mediaList(sc), [sc]);
-  const [log, setLog] = useState({});
   const [prev, setPrev] = useState({});
   const urls = game.mediaUrls ?? {};
   const done = list.filter((m) => urls[m.name]).length;
 
-  async function upload(name, file) {
-    setLog((l) => ({ ...l, [name]: "올리는 중…" }));
-    try {
-      const r = storageRef(storage, `case-games/${gameId}/${name}`);
-      await uploadBytes(r, file, file.type ? { contentType: file.type } : undefined);
-      const url = await getDownloadURL(r);
-      await caseGameAdminSetMedia({ gameId, mediaUrls: { [name]: url } });
-      setGame((g) => ({ ...g, mediaUrls: { ...g.mediaUrls, [name]: url } }));
-      setLog((l) => ({ ...l, [name]: "완료" }));
-    } catch (err) {
-      setLog((l) => ({ ...l, [name]: `실패: ${err.code || err.message}` }));
-    }
-  }
   // 여러 파일을 한 번에: 파일명이 시나리오가 쓰는 이름과 같은 것만 자동으로 연결
   async function bulk(files) {
     const names = new Set(list.map((m) => m.name));
     for (const f of files) {
-      if (!names.has(f.name)) { setLog((l) => ({ ...l, [f.name]: "시나리오가 쓰지 않는 파일명이라 건너뜀" })); continue; }
+      if (!names.has(f.name)) { alert(`"${f.name}"은(는) 시나리오가 쓰지 않는 파일명이라 건너뛰었어요.`); continue; }
       await upload(f.name, f);
     }
   }
@@ -446,7 +482,7 @@ function MediaTab({ gameId, sc, game, setGame }) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <div style={{ fontSize: 12.5 }}><strong>{m.label}</strong><span style={{ color: "var(--text-sub)", marginLeft: 8, fontSize: 11.5 }}>{m.name}</span></div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <span style={{ fontSize: 11.5, color: url ? "var(--text-sub)" : "var(--danger)" }}>{log[m.name] || (url ? "연결됨" : "없음")}</span>
+                  <span style={{ fontSize: 11.5, color: url && !String(log[m.name] ?? "").startsWith("실패") ? "var(--text-sub)" : "var(--danger)" }}>{log[m.name] || (url ? "연결됨" : "없음")}</span>
                   {url && <OutlineButton type="button" style={{ height: 28, padding: "0 10px", fontSize: 11.5 }} onClick={() => setPrev((p) => ({ ...p, [m.name]: !p[m.name] }))}>{prev[m.name] ? "닫기" : "미리보기"}</OutlineButton>}
                   <label style={{ fontSize: 11.5, color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>
                     {url ? "교체" : "올리기"}

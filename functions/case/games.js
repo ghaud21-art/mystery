@@ -3,6 +3,9 @@
 // 저장하고(둘 다 Firestore 규칙으로 클라이언트 접근 차단), 진행 상태는 caseRuns/{uid}_{id}에 저장한다.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
+import { randomUUID } from "node:crypto";
 import { requireAuth, requireAdmin } from "./auth.js";
 import { validateScenario } from "./missedRules.js";
 
@@ -103,25 +106,51 @@ export const caseGameAdminImport = onCall(async (request) => {
   return { gameId, warnings, activeCount: await activePlayers(db, gameId) };
 });
 
-// 업로드한 영상/이미지의 다운로드 주소를 파일명에 연결. 파일명은 시나리오 안에서 video/image 등으로 참조함.
+// 브라우저가 Storage에 직접 올리려면 쓰기 규칙을 통과해야 한다. 규칙은 Firestore를 다시 읽는 대신 로그인 토큰의
+// gameAdmin 표식만 본다 — 이 함수가 (Firestore의 isAdmin을 서버에서 확인한 뒤) 그 표식을 붙여 준다.
+// 호출한 뒤 클라이언트가 ID 토큰을 새로 받아야 표식이 반영된다.
+export const caseGameAdminUploadAccess = onCall(async (request) => {
+  const uid = await requireAdmin(request);
+  const user = await getAuth().getUser(uid);
+  if (user.customClaims?.gameAdmin !== true) {
+    await getAuth().setCustomUserClaims(uid, { ...(user.customClaims ?? {}), gameAdmin: true });
+  }
+  return { ok: true };
+});
+
+// 올라온 파일을 시나리오의 파일명에 연결. 다운로드 주소(토큰 포함)는 서버가 만든다 — Storage 읽기 규칙이 막혀 있어서
+// 브라우저의 getDownloadURL()은 쓸 수 없기 때문. files = [시나리오가 쓰는 파일명, ...]
 export const caseGameAdminSetMedia = onCall(async (request) => {
   await requireAdmin(request);
-  const { gameId, mediaUrls } = request.data || {};
+  const { gameId, files, remove } = request.data || {};
   checkGameId(gameId);
-  if (!mediaUrls || typeof mediaUrls !== "object") throw new HttpsError("invalid-argument", "mediaUrls가 필요해요.");
+  if (!Array.isArray(files) && !Array.isArray(remove)) throw new HttpsError("invalid-argument", "files가 필요해요.");
   const db = getFirestore();
   const contentRef = db.doc(`caseGameContent/${gameId}`);
   const contentSnap = await contentRef.get();
   if (!contentSnap.exists) throw new HttpsError("not-found", "게임을 찾을 수 없어요.");
   const merged = { ...(contentSnap.data().mediaUrls ?? {}) };
-  for (const [file, url] of Object.entries(mediaUrls)) {
-    if (url === null) delete merged[file];
-    else if (typeof url === "string" && /^https:\/\//.test(url)) merged[file] = url;
+  const bucket = getStorage().bucket();
+  const added = {};
+  for (const name of (files ?? []).slice(0, 60)) {
+    if (typeof name !== "string" || !name || name.includes("/")) continue;
+    const file = bucket.file(`case-games/${gameId}/${name}`);
+    const [exists] = await file.exists();
+    if (!exists) throw new HttpsError("not-found", `${name} 파일이 Storage에 아직 없어요. 업로드가 끝났는지 확인해 주세요.`);
+    const [meta] = await file.getMetadata();
+    let token = String(meta.metadata?.firebaseStorageDownloadTokens ?? "").split(",")[0];
+    if (!token) {
+      token = randomUUID();
+      await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+    }
+    added[name] = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;
   }
+  Object.assign(merged, added);
+  for (const name of remove ?? []) delete merged[name];
   const scenario = contentSnap.data().scenario;
   await contentRef.update({ mediaUrls: merged });
   await db.doc(`caseGames/${gameId}`).update({ thumbnailUrl: mediaOf(merged, scenario.meta.thumbnail), updatedAt: new Date().toISOString() });
-  return { gameId, count: Object.keys(merged).length };
+  return { gameId, urls: added, count: Object.keys(merged).length };
 });
 
 export const caseGameAdminPublish = onCall(async (request) => {
