@@ -16,7 +16,8 @@ const Body = ({ children, style }) => <p style={{ fontSize: 14, lineHeight: 1.85
 function Media({ kind = "video", src, poster }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  if (!src || failed) return null;
+  if (!src) return null;
+  if (failed) return <p style={{ fontSize: 12, color: "var(--text-sub)", margin: "8px 0 0" }}>영상을 불러오지 못했어요. (파일 형식이 브라우저에서 재생되지 않거나 연결이 끊겼을 수 있어요)</p>;
   const box = { width: "100%", borderRadius: 10, border: "1px solid var(--border)", display: "block", marginTop: 8 };
   if (kind === "audio") return <audio controls preload="metadata" src={src} onError={() => setFailed(true)} style={{ width: "100%", marginTop: 8 }} />;
   if (kind === "image") return <img src={src} alt="" onError={() => setFailed(true)} style={box} />;
@@ -54,7 +55,7 @@ function ClueCard({ clue, compact, selected, onClick }) {
       </div>
       {!compact && clue.image && <Media kind="image" src={clue.image} />}
       {clue.text && (
-        <p style={{ margin: "6px 0 0", fontSize: 12.5, lineHeight: 1.65, whiteSpace: "pre-line", ...(clue.kind === "card" ? mono : {}) }}>
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, lineHeight: 1.65, whiteSpace: "pre-line" }}>
           {clue.kind === "card" ? clue.text.split(" / ").join("\n") : clue.text}
         </p>
       )}
@@ -172,9 +173,13 @@ function LocationView({ view, act, busy, setFeedback, feedback }) {
               style={{ width: "100%", borderRadius: 10, border: "1px solid var(--border)", display: "block", background: "#000" }} />
           ) : L.poster ? <Media kind="image" src={L.poster} />
             : <div style={{ padding: 30, textAlign: "center", color: "var(--text-sub)", border: "1px dashed var(--border)", borderRadius: 10 }}>(장소 영상 준비 중)</div>}
-          {L.hintRects.flatMap((h) => h.rects.filter((r) => rectActive(r, curT)).map((r, i) => (
-            <span key={`${h.key}_${i}`} style={dot(r, { width: 30, height: 30, border: "2px solid var(--accent)", background: "rgba(20,16,8,.5)", color: "var(--accent)", fontSize: 15 })}>?</span>
-          )))}
+          {(() => {
+            // 돋보기는 한 번에 하나만: 지금 시각과 가장 가까운 후보 하나
+            const cands = L.hintRects.flatMap((h) => h.rects.filter((r) => rectActive(r, curT)).map((r, i) => ({ k: `${h.key}_${i}`, r })));
+            cands.sort((a, b) => Math.abs(curT - (a.r.t ?? curT)) - Math.abs(curT - (b.r.t ?? curT)));
+            const c = cands[0];
+            return c ? <span key={c.k} style={dot(c.r, { width: 30, height: 30, border: "2px solid var(--accent)", background: "rgba(20,16,8,.5)", color: "var(--accent)", fontSize: 15 })}>?</span> : null;
+          })()}
           {L.foundRects.flatMap((f) => f.rects.filter((r) => rectActive(r, curT)).map((r, i) => (
             <span key={`${f.id}_${i}`} style={dot(r, { width: 24, height: 24, background: "var(--accent)", color: "var(--bg)", fontSize: 13 })}>✓</span>
           )))}
