@@ -565,6 +565,64 @@ function StoryView({ view, act, busy }) {
   );
 }
 
+// 글자를 폭에 맞게 줄바꿈(한글은 띄어쓰기가 없어도 글자 단위로 자름)
+function wrapText(ctx, text, maxW) {
+  const lines = [];
+  for (const para of String(text).split("\n")) {
+    let line = "";
+    for (const ch of para) {
+      if (ctx.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch.trimStart(); } else line += ch;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+// 생각해 볼 것에 쓴 답을 이미지(PNG)로 내려받음. 서버로는 보내지 않고 브라우저에서만 그림.
+function saveReflectionImage({ title, header, items }) {
+  const W = 1080, PAD = 64, MAXW = W - PAD * 2, FONT = "'Pretendard','Noto Sans KR','Malgun Gothic',sans-serif";
+  const measure = document.createElement("canvas").getContext("2d");
+  const lay = (font, text) => { measure.font = font; return wrapText(measure, text, MAXW); };
+  const titleFont = `800 40px ${FONT}`, headFont = `400 24px ${FONT}`, qFont = `700 26px ${FONT}`, aFont = `400 28px ${FONT}`;
+  const blocks = [];
+  let H = PAD;
+  const titleLines = lay(titleFont, title); H += titleLines.length * 54 + 6;
+  const headLines = lay(headFont, header); H += headLines.length * 36 + 30;
+  H += 34; // 구분선 여백
+  for (const it of items) {
+    const q = lay(qFont, it.q), a = lay(aFont, it.a);
+    blocks.push({ q, a });
+    H += q.length * 38 + 10 + a.length * 42 + 38;
+  }
+  H += PAD - 10 + 30;
+  const scale = 2;
+  const cv = document.createElement("canvas");
+  cv.width = W * scale; cv.height = H * scale;
+  const ctx = cv.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#fffdf7"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#b8540a"; ctx.fillRect(0, 0, W, 10);
+  ctx.textBaseline = "top";
+  let y = PAD;
+  const draw = (lines, font, color, lh) => { ctx.font = font; ctx.fillStyle = color; for (const l of lines) { ctx.fillText(l, PAD, y); y += lh; } };
+  draw(titleLines, titleFont, "#2b2118", 54); y += 6;
+  draw(headLines, headFont, "#7a6a58", 36); y += 14;
+  ctx.fillStyle = "#e4d8c8"; ctx.fillRect(PAD, y, MAXW, 2); y += 34;
+  for (const b of blocks) {
+    draw(b.q, qFont, "#b8540a", 38); y += 10;
+    draw(b.a, aFont, "#2b2118", 42); y += 38;
+  }
+  ctx.font = `400 20px ${FONT}`; ctx.fillStyle = "#a89a88"; ctx.fillText("머더미스터리.com · 생각해 볼 것", PAD, y);
+  cv.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${title.replace(/[\/:*?"<>|]/g, "")}_생각해볼것.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }, "image/png");
+}
+
 function EndedView({ view, act, busy, navigate }) {
   const S = view.data.summary;
   const [answers, setAnswers] = useState({});
@@ -590,7 +648,7 @@ function EndedView({ view, act, busy, navigate }) {
       </Card>
       {S.reflectionPrompts.length > 0 && (
         <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Kicker>생각해 볼 것</Kicker>
+          <Kicker>생각해 볼 것 (선택)</Kicker>
           {S.reflectionPrompts.map((q, i) => (
             <div key={i}>
               <label style={{ fontSize: 12.5, color: "var(--text-sub)" }}>{q}</label>
@@ -598,7 +656,18 @@ function EndedView({ view, act, busy, navigate }) {
                 style={{ width: "100%", boxSizing: "border-box", marginTop: 4, padding: "8px 12px", borderRadius: 8, border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }} />
             </div>
           ))}
-          <Dim style={{ margin: 0 }}>이 답은 기기에만 보이고 저장되지 않아요. 모임 사람들과 이야기해 보세요.</Dim>
+          <Dim style={{ margin: 0 }}>쓰지 않아도 괜찮아요. 서버에는 저장되지 않아요. 모두 적으면 이미지로 저장해서 모임 사람들과 나눌 수 있어요.</Dim>
+          <PrimaryButton
+            style={{ alignSelf: "flex-start" }}
+            disabled={!S.reflectionPrompts.every((_, i) => (answers[i] ?? "").trim())}
+            onClick={() => saveReflectionImage({
+              title: view.meta.title,
+              header: `${S.playerName ? S.playerName + " · " : ""}${S.levelLabel} · 결말: ${S.endingTitle}`,
+              items: S.reflectionPrompts.map((q, i) => ({ q, a: answers[i].trim() })),
+            })}
+          >
+            이미지로 저장
+          </PrimaryButton>
         </Card>
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
