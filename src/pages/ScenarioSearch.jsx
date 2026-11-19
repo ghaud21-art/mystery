@@ -178,22 +178,28 @@ export default function ScenarioSearch() {
       return;
     }
     setSubmitStatus("등록 요청 중…");
-    const pendingSnap = await getDocs(query(collection(db, "scenarios"), where("status", "==", "pending")));
-    const dupPending = pendingSnap.docs.find((d) => normalizeTitle(d.data().title) === key);
-    if (dupPending) {
-      setSubmitStatus(`"${dupPending.data().title}"(이)라는 비슷한 제목이 이미 등록 요청되어 있어요.`);
-      return;
+    try {
+      // 남의 대기 중 요청은 보안 규칙상 읽을 수 없어서(일반 사용자는 거부됨) 내가 보낸 대기 요청만 확인한다.
+      const pendingSnap = await getDocs(query(collection(db, "scenarios"), where("submittedBy", "==", profile.id), where("status", "==", "pending")));
+      const dupPending = pendingSnap.docs.find((d) => normalizeTitle(d.data().title) === key);
+      if (dupPending) {
+        setSubmitStatus(`"${dupPending.data().title}"(이)라는 비슷한 제목을 이미 등록 요청하셨어요.`);
+        return;
+      }
+      await addDoc(collection(db, "scenarios"), {
+        ...form,
+        status: "pending",
+        submittedBy: profile.id,
+        submittedByName: displayName(profile),
+      });
+      setForm({ ...EMPTY_FORM, category });
+      setShowForm(false);
+      setSubmitStatus("관리자 승인 후 목록에 추가돼요. 요청 감사해요!");
+      setTimeout(() => setSubmitStatus(""), 4000);
+    } catch (err) {
+      console.error(err);
+      setSubmitStatus("등록 요청을 보내지 못했어요. 잠시 후 다시 시도해 주세요.");
     }
-    await addDoc(collection(db, "scenarios"), {
-      ...form,
-      status: "pending",
-      submittedBy: profile.id,
-      submittedByName: displayName(profile),
-    });
-    setForm({ ...EMPTY_FORM, category });
-    setShowForm(false);
-    setSubmitStatus("관리자 승인 후 목록에 추가돼요. 요청 감사해요!");
-    setTimeout(() => setSubmitStatus(""), 4000);
   }
 
   return (
